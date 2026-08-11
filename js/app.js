@@ -1,5 +1,6 @@
 (() => {
   const accent = '#486b5c';
+  const STORAGE_KEY = 'bathymetry-position-mapper.positions.v1';
   // Keep the map inside one Web Mercator world. Repeated worlds cause a WMS
   // server to return geographically unrelated images beside the valid map.
   const worldBounds = L.latLngBounds(
@@ -27,6 +28,20 @@
     attribution:'GEBCO Compilation Group — latest WMS'
   }).addTo(map);
 
+  // NOAA's cached global bathymetric contours are a transparent Web Mercator overlay.
+  const contours = L.tileLayer(
+    'https://coast.noaa.gov/arcgis/rest/services/OceanReports/BathymetricContours/MapServer/tile/{z}/{y}/{x}',
+    {
+      noWrap:true,
+      bounds:worldBounds,
+      minZoom:2,
+      maxNativeZoom:16,
+      maxZoom:18,
+      opacity:0.85,
+      attribution:'Bathymetric contours — NOAA Office for Coastal Management'
+    }
+  );
+
   const status = document.getElementById('status');
   bathy.on('load', () => { status.textContent = 'GEBCO bathymetry loaded.'; });
   bathy.on('tileerror', () => { status.textContent = 'GEBCO bathymetry tile error — check internet access or WMS availability.'; });
@@ -34,11 +49,58 @@
   L.control.scale({imperial:false,metric:true}).addTo(map);
 
   let points = [];
-  let markerLayer = L.layerGroup().addTo(map);
+  const markerLayer = L.layerGroup().addTo(map);
+  const annotationLayer = L.layerGroup().addTo(map);
+
+  L.control.layers({}, {
+    'GEBCO bathymetry': bathy,
+    'Depth contours': contours,
+    'Position annotations': annotationLayer
+  }, {
+    collapsed:false
+  }).addTo(map);
 
   const el = id => document.getElementById(id);
   const nameEl = el('name'), noteEl = el('note');
   const coordMode = el('coordMode'), displayMode = el('displayMode');
+
+  function setSaveState(message) {
+    const saveState = el('saveState');
+    if (saveState) saveState.textContent = message;
+  }
+
+  function savePoints() {
+    try {
+      const stored = points.map(({name,lat,lon,depth,note}) => ({name,lat,lon,depth,note}));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
+      setSaveState(points.length ? `${points.length} saved locally` : 'Auto-save on');
+    } catch (err) {
+      console.warn('Could not save positions in this browser.', err);
+      setSaveState('Auto-save unavailable');
+    }
+  }
+
+  function restorePoints() {
+    try {
+      const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+      if (!Array.isArray(stored)) return 0;
+      points = stored
+        .map(p => ({...p, lat:Number(p.lat), lon:Number(p.lon), depth:parseDepth(p.depth)}))
+        .filter(p => validate(p.lat,p.lon) && !Number.isNaN(p.depth))
+        .map((p,index) => ({
+          id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()+index+Math.random()),
+          name: String(p.name || `P${index+1}`),
+          lat:p.lat,
+          lon:p.lon,
+          depth:p.depth,
+          note:String(p.note || '')
+        }));
+      return points.length;
+    } catch (err) {
+      console.warn('Could not restore saved positions.', err);
+      return 0;
+    }
+  }
   const ddEntry = el('ddEntry'), dmEntry = el('dmEntry');
 
   function dmToDD(deg, min, hem) {
@@ -138,7 +200,7 @@
       const site = document.createElement('td');
       const siteIn = document.createElement('input');
       siteIn.value = p.name;
-      siteIn.addEventListener('change', () => { p.name=siteIn.value; renderMarkers(); });
+      siteIn.addEventListener('change', () => { p.name=siteIn.value; renderMarkers(); savePoints(); });
       site.appendChild(siteIn);
       tr.appendChild(site);
 
@@ -147,7 +209,7 @@
       const latIn = document.createElement('input');
       latIn.type='number'; latIn.step='any'; latIn.value=p.lat.toFixed(7);
       latIn.addEventListener('change', () => {
-        const v=Number(latIn.value); if(validate(v,p.lon)){p.lat=v;renderMarkers();} else {latIn.value=p.lat.toFixed(7);}
+        const v=Number(latIn.value); if(validate(v,p.lon)){p.lat=v;renderMarkers();savePoints();} else {latIn.value=p.lat.toFixed(7);}
       });
       latDD.appendChild(latIn); tr.appendChild(latDD);
 
@@ -156,7 +218,7 @@
       const lonIn = document.createElement('input');
       lonIn.type='number'; lonIn.step='any'; lonIn.value=p.lon.toFixed(7);
       lonIn.addEventListener('change', () => {
-        const v=Number(lonIn.value); if(validate(p.lat,v)){p.lon=v;renderMarkers();} else {lonIn.value=p.lon.toFixed(7);}
+        const v=Number(lonIn.value); if(validate(p.lat,v)){p.lon=v;renderMarkers();savePoints();} else {lonIn.value=p.lon.toFixed(7);}
       });
       lonDD.appendChild(lonIn); tr.appendChild(lonDD);
 
@@ -168,13 +230,13 @@
       depthIn.type='number'; depthIn.min='0'; depthIn.step='any'; depthIn.value=p.depth ?? '';
       depthIn.addEventListener('change', () => {
         const v=parseDepth(depthIn.value);
-        if(!Number.isNaN(v)){p.depth=v;renderMarkers();} else {depthIn.value=p.depth ?? '';}
+        if(!Number.isNaN(v)){p.depth=v;renderMarkers();savePoints();} else {depthIn.value=p.depth ?? '';}
       });
       depth.appendChild(depthIn); tr.appendChild(depth);
 
       const note = document.createElement('td');
       const noteIn = document.createElement('input'); noteIn.value=p.note;
-      noteIn.addEventListener('change', () => {p.note=noteIn.value;renderMarkers();});
+      noteIn.addEventListener('change', () => {p.note=noteIn.value;renderMarkers();savePoints();});
       note.appendChild(noteIn); tr.appendChild(note);
 
       const act = document.createElement('td');
@@ -184,18 +246,33 @@
       tb.appendChild(tr);
     }
     renderMarkers();
+    savePoints();
   }
 
   function renderMarkers() {
     markerLayer.clearLayers();
+    annotationLayer.clearLayers();
     points.forEach(p => {
       const m = L.circleMarker([p.lat,p.lon], {
         radius:6, color:'#ffffff', weight:2, fillColor:accent, fillOpacity:1
       });
       const popup = `<b>${escapeHtml(p.name)}</b><br>${p.lat.toFixed(6)}, ${p.lon.toFixed(6)}<br>${dmString(p.lat,true)}, ${dmString(p.lon,false)}${p.depth !== null ? '<br>Depth: '+p.depth+' m':''}${p.note ? '<br>'+escapeHtml(p.note):''}`;
       m.bindPopup(popup);
-      m.bindTooltip(p.name, {permanent:true,direction:'right',offset:[7,0],className:'marker-label'});
       markerLayer.addLayer(m);
+
+      const labelAnchor = L.circleMarker([p.lat,p.lon], {
+        radius:0,
+        opacity:0,
+        fillOpacity:0,
+        interactive:false
+      });
+      labelAnchor.bindTooltip(p.name, {
+        permanent:true,
+        direction:'right',
+        offset:[7,0],
+        className:'marker-label'
+      });
+      annotationLayer.addLayer(labelAnchor);
     });
   }
 
@@ -314,5 +391,10 @@
     status.textContent = 'Loaded example RCA positions.';
   });
 
+  const restoredCount = restorePoints();
   render();
+  if (restoredCount) {
+    fitMap();
+    setSaveState(`${restoredCount} restored and saved`);
+  }
 })();
