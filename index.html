@@ -28,10 +28,14 @@
   <section class="left">
     <div class="card">
       <h2>Add a position</h2>
-      <div class="row">
+      <div class="row" style="grid-template-columns:1fr 1fr 1fr">
         <div class="field">
           <label for="name">Label / Site</label>
           <input id="name" placeholder="e.g. MJ01E" />
+        </div>
+        <div class="field">
+          <label for="depth">Depth (m)</label>
+          <input id="depth" type="number" min="0" step="any" placeholder="e.g. 1238" />
         </div>
         <div class="field">
           <label for="note">Annotation</label>
@@ -124,6 +128,7 @@
               <th class="coords-dd">Longitude DD</th>
               <th class="coords-dm">Latitude DM</th>
               <th class="coords-dm">Longitude DM</th>
+              <th>Depth (m)</th>
               <th>Annotation</th>
               <th></th>
             </tr>
@@ -136,14 +141,13 @@
 
   <section class="right">
     <div id="map"></div>
-    <div id="status" class="status">Loading GEBCO bathymetry and land mask…</div>
+    <div id="status" class="status">Loading GEBCO bathymetry…</div>
   </section>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
         integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/topojson-client@3.1.0/dist/topojson-client.min.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>
