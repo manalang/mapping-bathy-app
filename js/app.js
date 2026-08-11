@@ -1,7 +1,18 @@
 (() => {
   const sage = '#9baa8c';
   const accent = '#486b5c';
-  const map = L.map('map', { worldCopyJump:true }).setView([44.5,-125], 6);
+  // Keep the map inside one Web Mercator world. Repeated worlds cause a WMS
+  // server to return geographically unrelated images beside the valid map.
+  const worldBounds = L.latLngBounds(
+    [-85.05112878, -180],
+    [85.05112878, 180]
+  );
+  const map = L.map('map', {
+    worldCopyJump: false,
+    maxBounds: worldBounds,
+    maxBoundsViscosity: 1,
+    minZoom: 2
+  }).setView([44.5, -125], 6);
 
   // GEBCO 2026 shaded relief WMS
   const bathy = L.tileLayer.wms('https://wms.gebco.net/mapserv?', {
@@ -9,6 +20,11 @@
     format:'image/jpeg',
     transparent:false,
     version:'1.3.0',
+    crs:L.CRS.EPSG3857,
+    noWrap:true,
+    bounds:worldBounds,
+    updateWhenZooming:false,
+    keepBuffer:2,
     attribution:'GEBCO Compilation Group — latest WMS'
   }).addTo(map);
 
