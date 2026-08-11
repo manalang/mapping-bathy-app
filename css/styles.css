@@ -120,6 +120,13 @@
     .coords-dm{display:none}
     body.mode-dm .coords-dd{display:none}
     body.mode-dm .coords-dm{display:block}
+    .leaflet-control-layers{
+      border:1px solid var(--border);
+      border-radius:8px;
+      box-shadow:var(--shadow);
+      color:var(--text);
+    }
+    .leaflet-control-layers label{font-size:12px}
     .leaflet-tooltip.marker-label{
       background:rgba(255,255,255,.88);
       border:1px solid #8c9987;
