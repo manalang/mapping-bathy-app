@@ -1,5 +1,4 @@
 (() => {
-  const sage = '#9baa8c';
   const accent = '#486b5c';
   // Keep the map inside one Web Mercator world. Repeated worlds cause a WMS
   // server to return geographically unrelated images beside the valid map.
@@ -31,21 +30,6 @@
   const status = document.getElementById('status');
   bathy.on('load', () => { status.textContent = 'GEBCO bathymetry loaded.'; });
   bathy.on('tileerror', () => { status.textContent = 'GEBCO bathymetry tile error — check internet access or WMS availability.'; });
-
-  // Sage-green land mask from Natural Earth / world-atlas.
-  fetch('https://cdn.jsdelivr.net/npm/world-atlas@2.0.2/land-110m.json')
-    .then(r => r.json())
-    .then(topology => {
-      const geo = topojson.feature(topology, topology.objects.land);
-      L.geoJSON(geo, {
-        interactive:false,
-        style:{ color:'#7d8d72', weight:0.5, fillColor:sage, fillOpacity:1 }
-      }).addTo(map);
-      status.textContent = 'GEBCO bathymetry + sage-green land loaded.';
-    })
-    .catch(() => {
-      status.textContent = 'Bathymetry loaded; land-mask service unavailable, so GEBCO land colors remain visible.';
-    });
 
   L.control.scale({imperial:false,metric:true}).addTo(map);
 
@@ -82,6 +66,12 @@
       lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180;
   }
 
+  function parseDepth(value) {
+    if (value === '' || value === null || value === undefined) return null;
+    const depth = Number(value);
+    return Number.isFinite(depth) && depth >= 0 ? depth : NaN;
+  }
+
   coordMode.addEventListener('change', () => {
     const dm = coordMode.value === 'dm';
     ddEntry.style.display = dm ? 'none' : '';
@@ -93,7 +83,7 @@
   });
 
   function clearEntry() {
-    ['name','note','latDD','lonDD','latDeg','latMin','lonDeg','lonMin'].forEach(id => el(id).value='');
+    ['name','depth','note','latDD','lonDD','latDeg','latMin','lonDeg','lonMin'].forEach(id => el(id).value='');
     el('latHem').value='N';
     el('lonHem').value='W';
   }
@@ -113,11 +103,17 @@
       alert('Please enter a valid latitude (-90 to 90) and longitude (-180 to 180).');
       return false;
     }
+    const depth = parseDepth(p.depth);
+    if (Number.isNaN(depth)) {
+      alert('Depth must be blank or a non-negative number in meters.');
+      return false;
+    }
     points.push({
       id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()+Math.random()),
       name: p.name || `P${points.length+1}`,
       lat: Number(p.lat),
       lon: Number(p.lon),
+      depth,
       note: p.note || ''
     });
     render();
@@ -127,7 +123,7 @@
 
   el('addBtn').addEventListener('click', () => {
     const c = readEntryCoordinates();
-    if (addPosition({name:nameEl.value.trim(),note:noteEl.value.trim(),...c})) clearEntry();
+    if (addPosition({name:nameEl.value.trim(),depth:el('depth').value,note:noteEl.value.trim(),...c})) clearEntry();
   });
   el('clearBtn').addEventListener('click', clearEntry);
 
@@ -167,6 +163,15 @@
       const latDM = document.createElement('td'); latDM.className='coords-dm'; latDM.textContent=dmString(p.lat,true); tr.appendChild(latDM);
       const lonDM = document.createElement('td'); lonDM.className='coords-dm'; lonDM.textContent=dmString(p.lon,false); tr.appendChild(lonDM);
 
+      const depth = document.createElement('td');
+      const depthIn = document.createElement('input');
+      depthIn.type='number'; depthIn.min='0'; depthIn.step='any'; depthIn.value=p.depth ?? '';
+      depthIn.addEventListener('change', () => {
+        const v=parseDepth(depthIn.value);
+        if(!Number.isNaN(v)){p.depth=v;renderMarkers();} else {depthIn.value=p.depth ?? '';}
+      });
+      depth.appendChild(depthIn); tr.appendChild(depth);
+
       const note = document.createElement('td');
       const noteIn = document.createElement('input'); noteIn.value=p.note;
       noteIn.addEventListener('change', () => {p.note=noteIn.value;renderMarkers();});
@@ -187,7 +192,7 @@
       const m = L.circleMarker([p.lat,p.lon], {
         radius:6, color:'#ffffff', weight:2, fillColor:accent, fillOpacity:1
       });
-      const popup = `<b>${escapeHtml(p.name)}</b><br>${p.lat.toFixed(6)}, ${p.lon.toFixed(6)}<br>${dmString(p.lat,true)}, ${dmString(p.lon,false)}${p.note ? '<br>'+escapeHtml(p.note):''}`;
+      const popup = `<b>${escapeHtml(p.name)}</b><br>${p.lat.toFixed(6)}, ${p.lon.toFixed(6)}<br>${dmString(p.lat,true)}, ${dmString(p.lon,false)}${p.depth !== null ? '<br>Depth: '+p.depth+' m':''}${p.note ? '<br>'+escapeHtml(p.note):''}`;
       m.bindPopup(popup);
       m.bindTooltip(p.name, {permanent:true,direction:'right',offset:[7,0],className:'marker-label'});
       markerLayer.addLayer(m);
@@ -246,12 +251,13 @@
         const note=first(row,['Annotation','Note','Description','Comment','Comments']);
         let lat=first(row,['Latitude','Lat','LatitudeDD','LatDD']);
         let lon=first(row,['Longitude','Lon','Long','Lng','LongitudeDD','LonDD']);
+        const depth=parseDepth(first(row,['Depth','Depthm','DepthMeters','WaterDepth','WaterDepthm']));
 
         lat=parseDMText(lat,true);
         lon=parseDMText(lon,false);
 
-        if(validate(lat,lon)){
-          addPosition({name:String(name||''),note:String(note||''),lat,lon},false);
+        if(validate(lat,lon) && !Number.isNaN(depth)){
+          addPosition({name:String(name||''),note:String(note||''),lat,lon,depth},false);
           added++;
         } else skipped++;
       }
@@ -280,6 +286,7 @@
       Longitude_DD:p.lon,
       Latitude_DM:dmString(p.lat,true),
       Longitude_DM:dmString(p.lon,false),
+      Depth_m:p.depth ?? '',
       Annotation:p.note
     }));
     const ws=XLSX.utils.json_to_sheet(out);
@@ -293,10 +300,10 @@
   });
 
   const examplePoints = [
-    {name:'MJ01E',lat:44.479722,lon:-125.152500,note:'Example'},
-    {name:'MJ01F',lat:44.364722,lon:-124.963056,note:'Example'},
-    {name:'MJ01G',lat:44.690000,lon:-124.456944,note:'Example'},
-    {name:'MJ01C',lat:44.637323,lon:-124.305402,note:'Example'}
+    {name:'MJ01E',lat:44.479722,lon:-125.152500,depth:1238,note:'Example'},
+    {name:'MJ01F',lat:44.364722,lon:-124.963056,depth:617,note:'Example'},
+    {name:'MJ01G',lat:44.690000,lon:-124.456944,depth:112,note:'Example'},
+    {name:'MJ01C',lat:44.637323,lon:-124.305402,depth:80,note:'Example'}
   ];
 
   el('exampleBtn').addEventListener('click', () => {
