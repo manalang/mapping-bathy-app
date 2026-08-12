@@ -11,7 +11,8 @@
     worldCopyJump: false,
     maxBounds: worldBounds,
     maxBoundsViscosity: 1,
-    minZoom: 2
+    minZoom: 2,
+    maxZoom: 22
   }).setView([44.5, -125], 6);
 
   // GEBCO 2026 shaded relief WMS
@@ -25,6 +26,7 @@
     bounds:worldBounds,
     updateWhenZooming:false,
     keepBuffer:2,
+    maxZoom:22,
     attribution:'GEBCO Compilation Group — latest WMS'
   }).addTo(map);
 
@@ -36,8 +38,9 @@
       bounds:worldBounds,
       minZoom:2,
       maxNativeZoom:16,
-      maxZoom:18,
-      opacity:0.85,
+      maxZoom:22,
+      opacity:1,
+      zIndex:350,
       attribution:'Bathymetric contours — NOAA Office for Coastal Management'
     }
   );
@@ -49,6 +52,7 @@
   L.control.scale({imperial:false,metric:true}).addTo(map);
 
   let points = [];
+  let sortState = {key:null, direction:1};
   const markerLayer = L.layerGroup().addTo(map);
   const annotationLayer = L.layerGroup().addTo(map);
 
@@ -71,7 +75,7 @@
 
   function savePoints() {
     try {
-      const stored = points.map(({name,lat,lon,depth,note}) => ({name,lat,lon,depth,note}));
+      const stored = points.map(({name,lat,lon,depth,note,visible,color}) => ({name,lat,lon,depth,note,visible,color}));
       localStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
       setSaveState(points.length ? `${points.length} saved locally` : 'Auto-save on');
     } catch (err) {
@@ -93,7 +97,9 @@
           lat:p.lat,
           lon:p.lon,
           depth:p.depth,
-          note:String(p.note || '')
+          note:String(p.note || ''),
+          visible:p.visible !== false,
+          color:/^#[0-9a-f]{6}$/i.test(p.color || '') ? p.color : accent
         }));
       return points.length;
     } catch (err) {
@@ -141,7 +147,8 @@
   });
 
   displayMode.addEventListener('change', () => {
-    document.body.classList.toggle('mode-dm', displayMode.value === 'dm');
+    document.body.classList.toggle('mode-dd-only', displayMode.value === 'dd');
+    document.body.classList.toggle('mode-dm-only', displayMode.value === 'dm');
   });
 
   function clearEntry() {
@@ -176,7 +183,9 @@
       lat: Number(p.lat),
       lon: Number(p.lon),
       depth,
-      note: p.note || ''
+      note: p.note || '',
+      visible:p.visible !== false,
+      color:/^#[0-9a-f]{6}$/i.test(p.color || '') ? p.color : accent
     });
     render();
     if (fit) fitMap();
@@ -194,8 +203,32 @@
     const tb = el('tbody');
     tb.innerHTML = '';
 
-    for (const p of points) {
+    const displayedPoints = [...points].sort((a,b) => {
+      if (!sortState.key) return 0;
+      let av=a[sortState.key], bv=b[sortState.key];
+      if (sortState.key === 'name' || sortState.key === 'note') {
+        return String(av || '').localeCompare(String(bv || '')) * sortState.direction;
+      }
+      av = av === null ? Infinity : Number(av);
+      bv = bv === null ? Infinity : Number(bv);
+      return (av-bv) * sortState.direction;
+    });
+
+    for (const p of displayedPoints) {
       const tr = document.createElement('tr');
+      tr.classList.toggle('position-hidden', !p.visible);
+
+      const selected = document.createElement('td');
+      selected.className='select-col';
+      const selectedIn = document.createElement('input');
+      selectedIn.type='checkbox'; selectedIn.checked=p.visible;
+      selectedIn.setAttribute('aria-label', `Show ${p.name} on map`);
+      selectedIn.addEventListener('change', () => {
+        p.visible=selectedIn.checked;
+        tr.classList.toggle('position-hidden', !p.visible);
+        renderMarkers(); savePoints();
+      });
+      selected.appendChild(selectedIn); tr.appendChild(selected);
 
       const site = document.createElement('td');
       const siteIn = document.createElement('input');
@@ -227,12 +260,19 @@
 
       const depth = document.createElement('td');
       const depthIn = document.createElement('input');
-      depthIn.type='number'; depthIn.min='0'; depthIn.step='any'; depthIn.value=p.depth ?? '';
+      depthIn.type='number'; depthIn.min='0'; depthIn.step='1'; depthIn.value=p.depth === null ? '' : Math.round(p.depth);
       depthIn.addEventListener('change', () => {
         const v=parseDepth(depthIn.value);
-        if(!Number.isNaN(v)){p.depth=v;renderMarkers();savePoints();} else {depthIn.value=p.depth ?? '';}
+        if(!Number.isNaN(v)){p.depth=v === null ? null : Math.round(v);depthIn.value=p.depth ?? '';renderMarkers();savePoints();} else {depthIn.value=p.depth === null ? '' : Math.round(p.depth);}
       });
       depth.appendChild(depthIn); tr.appendChild(depth);
+
+      const color = document.createElement('td');
+      const colorIn = document.createElement('input');
+      colorIn.type='color'; colorIn.value=p.color;
+      colorIn.setAttribute('aria-label', `Marker color for ${p.name}`);
+      colorIn.addEventListener('input', () => {p.color=colorIn.value;renderMarkers();savePoints();});
+      color.appendChild(colorIn); tr.appendChild(color);
 
       const note = document.createElement('td');
       const noteIn = document.createElement('input'); noteIn.value=p.note;
@@ -252,9 +292,9 @@
   function renderMarkers() {
     markerLayer.clearLayers();
     annotationLayer.clearLayers();
-    points.forEach(p => {
+    points.filter(p => p.visible).forEach(p => {
       const m = L.circleMarker([p.lat,p.lon], {
-        radius:6, color:'#ffffff', weight:2, fillColor:accent, fillOpacity:1
+        radius:6, color:'#ffffff', weight:2, fillColor:p.color, fillOpacity:1
       });
       const popup = `<b>${escapeHtml(p.name)}</b><br>${p.lat.toFixed(6)}, ${p.lon.toFixed(6)}<br>${dmString(p.lat,true)}, ${dmString(p.lon,false)}${p.depth !== null ? '<br>Depth: '+p.depth+' m':''}${p.note ? '<br>'+escapeHtml(p.note):''}`;
       m.bindPopup(popup);
@@ -277,11 +317,30 @@
   }
 
   function fitMap() {
-    if (!points.length) return;
-    if (points.length===1) map.setView([points[0].lat,points[0].lon], 10);
-    else map.fitBounds(L.latLngBounds(points.map(p=>[p.lat,p.lon])), {padding:[35,35],maxZoom:12});
+    const visiblePoints=points.filter(p=>p.visible);
+    if (!visiblePoints.length) return;
+    if (visiblePoints.length===1) map.setView([visiblePoints[0].lat,visiblePoints[0].lon], 14);
+    else map.fitBounds(L.latLngBounds(visiblePoints.map(p=>[p.lat,p.lon])), {padding:[35,35],maxZoom:18});
   }
   el('fitBtn').addEventListener('click', fitMap);
+
+  document.querySelectorAll('.sort-button').forEach(button => {
+    button.addEventListener('click', () => {
+      const key=button.dataset.sort;
+      sortState = sortState.key === key
+        ? {key, direction:sortState.direction * -1}
+        : {key, direction:1};
+      document.querySelectorAll('.sort-button').forEach(b => b.removeAttribute('data-direction'));
+      button.dataset.direction=sortState.direction === 1 ? 'asc' : 'desc';
+      render();
+    });
+  });
+
+  el('selectAllBtn').addEventListener('click', () => {
+    const showAll=points.some(p=>!p.visible);
+    points.forEach(p=>{p.visible=showAll;});
+    render();
+  });
 
   function escapeHtml(s='') {
     return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -334,7 +393,9 @@
         lon=parseDMText(lon,false);
 
         if(validate(lat,lon) && !Number.isNaN(depth)){
-          addPosition({name:String(name||''),note:String(note||''),lat,lon,depth},false);
+          const color=String(first(row,['Color','MarkerColor']) || accent);
+          const visibleValue=String(first(row,['Visible','Show','Selected']) || 'true').toLowerCase();
+          addPosition({name:String(name||''),note:String(note||''),lat,lon,depth,color,visible:!['false','no','0','hidden'].includes(visibleValue)},false);
           added++;
         } else skipped++;
       }
@@ -363,7 +424,9 @@
       Longitude_DD:p.lon,
       Latitude_DM:dmString(p.lat,true),
       Longitude_DM:dmString(p.lon,false),
-      Depth_m:p.depth ?? '',
+      Depth_m:p.depth === null ? '' : Math.round(p.depth),
+      Visible:p.visible,
+      Marker_Color:p.color,
       Annotation:p.note
     }));
     const ws=XLSX.utils.json_to_sheet(out);
