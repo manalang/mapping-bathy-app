@@ -27,6 +27,7 @@
     updateWhenZooming:false,
     keepBuffer:2,
     maxZoom:22,
+    crossOrigin:true,
     attribution:'GEBCO Compilation Group — latest WMS'
   }).addTo(map);
 
@@ -41,6 +42,7 @@
       maxZoom:22,
       opacity:1,
       zIndex:350,
+      crossOrigin:true,
       attribution:'Bathymetric contours — NOAA Office for Coastal Management'
     }
   );
@@ -55,6 +57,9 @@
   let sortState = {key:null, direction:1};
   const markerLayer = L.layerGroup().addTo(map);
   const annotationLayer = L.layerGroup().addTo(map);
+  const contourLabelLayer = L.layerGroup();
+  const highlightLayer = L.layerGroup().addTo(map);
+  let contourLabelRequest = 0;
 
   L.control.layers({}, {
     'GEBCO bathymetry': bathy,
@@ -272,7 +277,23 @@
       colorIn.type='color'; colorIn.value=p.color;
       colorIn.setAttribute('aria-label', `Marker color for ${p.name}`);
       colorIn.addEventListener('input', () => {p.color=colorIn.value;renderMarkers();savePoints();});
-      color.appendChild(colorIn); tr.appendChild(color);
+      const presets = document.createElement('div');
+      presets.className='color-presets';
+      ['#486b5c','#1976d2','#d32f2f','#f9a825','#7b1fa2','#111111'].forEach(preset => {
+        const presetBtn=document.createElement('button');
+        presetBtn.type='button';
+        presetBtn.className='color-preset';
+        presetBtn.style.backgroundColor=preset;
+        presetBtn.title=`Use ${preset}`;
+        presetBtn.setAttribute('aria-label', `Use marker color ${preset}`);
+        presetBtn.addEventListener('click', event => {
+          event.stopPropagation();
+          p.color=preset; colorIn.value=preset; renderMarkers(); savePoints();
+        });
+        presets.appendChild(presetBtn);
+      });
+      presets.appendChild(colorIn);
+      color.appendChild(presets); tr.appendChild(color);
 
       const note = document.createElement('td');
       const noteIn = document.createElement('input'); noteIn.value=p.note;
@@ -283,10 +304,34 @@
       const del = document.createElement('button'); del.textContent='Delete'; del.className='mini danger';
       del.addEventListener('click',()=>{points=points.filter(x=>x.id!==p.id);render();});
       act.appendChild(del); tr.appendChild(act);
+
+      tr.addEventListener('click', event => {
+        if (event.target.closest('input,button,select')) return;
+        focusPosition(p);
+      });
       tb.appendChild(tr);
     }
     renderMarkers();
     savePoints();
+  }
+
+  function focusPosition(p) {
+    if (!p.visible) {
+      p.visible=true;
+      render();
+    }
+    map.flyTo([p.lat,p.lon], Math.max(map.getZoom(), 16), {duration:0.65});
+    highlightLayer.clearLayers();
+    const highlight=L.circleMarker([p.lat,p.lon], {
+      radius:15,
+      color:'#ffeb3b',
+      weight:4,
+      fillColor:p.color,
+      fillOpacity:0.35,
+      className:'position-highlight',
+      interactive:false
+    }).addTo(highlightLayer);
+    setTimeout(() => highlightLayer.removeLayer(highlight), 2400);
   }
 
   function renderMarkers() {
@@ -417,6 +462,33 @@
     if(points.length && confirm('Remove all positions?')){points=[];render();}
   });
 
+  el('exportMapBtn').addEventListener('click', async () => {
+    const button=el('exportMapBtn');
+    const original=button.textContent;
+    button.disabled=true;
+    button.textContent='Rendering PNG…';
+    try {
+      const canvas=await html2canvas(el('map'), {
+        useCORS:true,
+        allowTaint:false,
+        backgroundColor:'#d9e6e7',
+        scale:Math.min(window.devicePixelRatio || 1, 2),
+        logging:false
+      });
+      const a=document.createElement('a');
+      a.download=`bathymetry-map-${new Date().toISOString().slice(0,10)}.png`;
+      a.href=canvas.toDataURL('image/png');
+      a.click();
+      status.textContent='Map PNG exported.';
+    } catch (err) {
+      console.error(err);
+      alert('The map image could not be exported. Try again after all map layers have finished loading.');
+    } finally {
+      button.disabled=false;
+      button.textContent=original;
+    }
+  });
+
   el('exportBtn').addEventListener('click',()=>{
     const out=points.map(p=>({
       Name:p.name,
@@ -452,6 +524,72 @@
     render();
     fitMap();
     status.textContent = 'Loaded example RCA positions.';
+  });
+
+  function contourMidpoint(feature) {
+    const geometry=feature?.geometry;
+    const lines=geometry?.type === 'MultiLineString' ? geometry.coordinates :
+      geometry?.type === 'LineString' ? [geometry.coordinates] : [];
+    const line=lines.reduce((best,current) => current.length > best.length ? current : best, []);
+    if (!line.length) return null;
+    const point=line[Math.floor(line.length/2)];
+    return [point[1],point[0]];
+  }
+
+  async function updateContourLabels() {
+    const requestId=++contourLabelRequest;
+    contourLabelLayer.clearLayers();
+    if (!map.hasLayer(contours) || map.getZoom() < 15) return;
+    const bounds=map.getBounds();
+    const geometry={
+      xmin:bounds.getWest(), ymin:bounds.getSouth(),
+      xmax:bounds.getEast(), ymax:bounds.getNorth(),
+      spatialReference:{wkid:4326}
+    };
+    const params=new URLSearchParams({
+      where:'1=1',
+      geometry:JSON.stringify(geometry),
+      geometryType:'esriGeometryEnvelope',
+      inSR:'4326',
+      spatialRel:'esriSpatialRelIntersects',
+      outFields:'Contour',
+      returnGeometry:'true',
+      outSR:'4326',
+      f:'geojson',
+      resultRecordCount:'1000'
+    });
+    try {
+      const response=await fetch(
+        'https://coast.noaa.gov/arcgis/rest/services/OceanReports/BathymetricContours/MapServer/0/query?'+params
+      );
+      if (!response.ok) throw new Error(`NOAA contour query returned ${response.status}`);
+      const data=await response.json();
+      if (requestId !== contourLabelRequest || !map.hasLayer(contours)) return;
+      const used=new Set();
+      (data.features || []).forEach(feature => {
+        const depth=Number(feature.properties?.Contour);
+        const position=contourMidpoint(feature);
+        const key=Number.isFinite(depth) ? depth : null;
+        if (!position || key === null || used.has(key) || used.size >= 32) return;
+        used.add(key);
+        L.marker(position, {
+          interactive:false,
+          icon:L.divIcon({
+            className:'contour-depth-label',
+            html:`<span>${Math.abs(Math.round(depth))} m</span>`,
+            iconSize:null
+          })
+        }).addTo(contourLabelLayer);
+      });
+      if (used.size && !map.hasLayer(contourLabelLayer)) contourLabelLayer.addTo(map);
+    } catch (err) {
+      console.warn('Could not add supplemental contour labels.', err);
+    }
+  }
+
+  map.on('moveend zoomend', updateContourLabels);
+  map.on('overlayadd overlayremove', event => {
+    if (event.layer === contours) updateContourLabels();
   });
 
   const restoredCount = restorePoints();
