@@ -55,8 +55,9 @@
         <div class="field">
           <label for="displayMode">Table display</label>
           <select id="displayMode">
-            <option value="dd">Decimal degrees</option>
-            <option value="dm">Degrees + decimal minutes</option>
+            <option value="both" selected>DD and decimal minutes</option>
+            <option value="dd">Decimal degrees only</option>
+            <option value="dm">Decimal minutes only</option>
           </select>
         </div>
       </div>
@@ -124,13 +125,15 @@
         <table>
           <thead>
             <tr>
-              <th>Site</th>
-              <th class="coords-dd">Latitude DD</th>
-              <th class="coords-dd">Longitude DD</th>
-              <th class="coords-dm">Latitude DM</th>
-              <th class="coords-dm">Longitude DM</th>
-              <th>Depth (m)</th>
-              <th>Annotation</th>
+              <th class="select-col"><button id="selectAllBtn" class="header-action" title="Show or hide all positions">Show</button></th>
+              <th><button class="sort-button" data-sort="name">Site</button></th>
+              <th class="coords-dd"><button class="sort-button" data-sort="lat">Latitude DD</button></th>
+              <th class="coords-dd"><button class="sort-button" data-sort="lon">Longitude DD</button></th>
+              <th class="coords-dm"><button class="sort-button" data-sort="lat">Latitude DM</button></th>
+              <th class="coords-dm"><button class="sort-button" data-sort="lon">Longitude DM</button></th>
+              <th><button class="sort-button" data-sort="depth">Depth (m)</button></th>
+              <th>Color</th>
+              <th><button class="sort-button" data-sort="note">Annotation</button></th>
               <th></th>
             </tr>
           </thead>
