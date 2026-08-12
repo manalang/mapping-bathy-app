@@ -20,6 +20,7 @@
     <input id="fileInput" type="file" accept=".xlsx,.xls,.csv,.tsv" />
     <button id="exampleBtn">Load example data</button>
     <button id="exportBtn">Export CSV</button>
+    <button id="exportMapBtn">Export map PNG</button>
     <button id="fitBtn">Fit to positions</button>
     <span id="saveState" class="pill" title="Positions are stored only in this browser">Auto-save on</span>
   </div>
@@ -152,6 +153,7 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
         integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>
