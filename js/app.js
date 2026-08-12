@@ -1,6 +1,7 @@
 (() => {
   const accent = '#486b5c';
   const STORAGE_KEY = 'bathymetry-position-mapper.positions.v1';
+  const SPLIT_STORAGE_KEY = 'bathymetry-position-mapper.split.v1';
   // Keep the map inside one Web Mercator world. Repeated worlds cause a WMS
   // server to return geographically unrelated images beside the valid map.
   const worldBounds = L.latLngBounds(
@@ -475,11 +476,22 @@
         scale:Math.min(window.devicePixelRatio || 1, 2),
         logging:false
       });
+      const blob=await new Promise((resolve,reject) => {
+        canvas.toBlob(
+          value => value ? resolve(value) : reject(new Error('PNG encoding failed')),
+          'image/png'
+        );
+      });
+      const url=URL.createObjectURL(new Blob([blob], {type:'image/png'}));
       const a=document.createElement('a');
       a.download=`bathymetry-map-${new Date().toISOString().slice(0,10)}.png`;
-      a.href=canvas.toDataURL('image/png');
+      a.href=url;
+      a.type='image/png';
+      document.body.appendChild(a);
       a.click();
-      status.textContent='Map PNG exported.';
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      status.textContent='Map PNG exported as image/png.';
     } catch (err) {
       console.error(err);
       alert('The map image could not be exported. Try again after all map layers have finished loading.');
@@ -525,6 +537,58 @@
     fitMap();
     status.textContent = 'Loaded example RCA positions.';
   });
+
+  const appLayout=document.querySelector('.app');
+  const splitter=el('splitter');
+  const savedSplit=Number(localStorage.getItem(SPLIT_STORAGE_KEY));
+  if (Number.isFinite(savedSplit) && savedSplit >= 25 && savedSplit <= 70) {
+    appLayout.style.setProperty('--left-width', `${savedSplit}%`);
+  }
+
+  function setSplitFromClientX(clientX) {
+    if (window.matchMedia('(max-width:850px)').matches) return;
+    const rect=appLayout.getBoundingClientRect();
+    const minLeft=Math.max(320, rect.width * 0.25);
+    const maxLeft=Math.min(rect.width - 360, rect.width * 0.7);
+    const left=Math.min(maxLeft, Math.max(minLeft, clientX-rect.left));
+    const percent=(left/rect.width)*100;
+    appLayout.style.setProperty('--left-width', `${percent}%`);
+    splitter.setAttribute('aria-valuenow', String(Math.round(percent)));
+    map.invalidateSize({pan:false});
+  }
+
+  splitter.addEventListener('pointerdown', event => {
+    if (window.matchMedia('(max-width:850px)').matches) return;
+    event.preventDefault();
+    splitter.setPointerCapture(event.pointerId);
+    splitter.classList.add('dragging');
+    document.body.classList.add('resizing-layout');
+  });
+  splitter.addEventListener('pointermove', event => {
+    if (!splitter.hasPointerCapture(event.pointerId)) return;
+    setSplitFromClientX(event.clientX);
+  });
+  splitter.addEventListener('pointerup', event => {
+    if (!splitter.hasPointerCapture(event.pointerId)) return;
+    splitter.releasePointerCapture(event.pointerId);
+    splitter.classList.remove('dragging');
+    document.body.classList.remove('resizing-layout');
+    const percent=parseFloat(getComputedStyle(appLayout).getPropertyValue('--left-width'));
+    if (Number.isFinite(percent)) localStorage.setItem(SPLIT_STORAGE_KEY, String(percent));
+    map.invalidateSize({pan:false});
+  });
+  splitter.addEventListener('keydown', event => {
+    if (!['ArrowLeft','ArrowRight'].includes(event.key) ||
+        window.matchMedia('(max-width:850px)').matches) return;
+    event.preventDefault();
+    const rect=appLayout.getBoundingClientRect();
+    const current=parseFloat(getComputedStyle(appLayout).getPropertyValue('--left-width')) || 44;
+    const next=current+(event.key === 'ArrowRight' ? 2 : -2);
+    setSplitFromClientX(rect.left+(next/100)*rect.width);
+    const stored=parseFloat(getComputedStyle(appLayout).getPropertyValue('--left-width'));
+    if (Number.isFinite(stored)) localStorage.setItem(SPLIT_STORAGE_KEY, String(stored));
+  });
+  window.addEventListener('resize', () => map.invalidateSize({pan:false}));
 
   function contourMidpoint(feature) {
     const geometry=feature?.geometry;
