@@ -60,12 +60,14 @@
   const annotationLayer = L.layerGroup().addTo(map);
   const contourLabelLayer = L.layerGroup();
   const highlightLayer = L.layerGroup().addTo(map);
+  const measurementLayer = L.layerGroup().addTo(map);
   let contourLabelRequest = 0;
 
   L.control.layers({}, {
     'GEBCO bathymetry': bathy,
     'Depth contours': contours,
-    'Position annotations': annotationLayer
+    'Position annotations': annotationLayer,
+    'Measurement': measurementLayer
   }, {
     collapsed:false
   }).addTo(map);
@@ -114,6 +116,110 @@
     }
   }
   const ddEntry = el('ddEntry'), dmEntry = el('dmEntry');
+
+  let measuring=false;
+  let measurePointerId=null;
+  let measureStart=null;
+  let measureLine=null;
+
+  function formatDistanceKm(meters) {
+    const km=meters/1000;
+    if (km < 0.1) return `${km.toFixed(3)} km`;
+    if (km < 10) return `${km.toFixed(2)} km`;
+    if (km < 100) return `${km.toFixed(1)} km`;
+    return `${Math.round(km)} km`;
+  }
+
+  function clearMeasurement() {
+    measurementLayer.clearLayers();
+    measureStart=null;
+    measureLine=null;
+    el('clearMeasureBtn').disabled=true;
+  }
+
+  function setMeasuring(enabled) {
+    measuring=enabled;
+    el('measureBtn').classList.toggle('active', enabled);
+    el('measureBtn').setAttribute('aria-pressed', String(enabled));
+    el('measureBtn').textContent=enabled ? 'Measuring: drag on map' : 'Measure distance';
+    document.body.classList.toggle('measure-mode', enabled);
+    if (enabled) {
+      map.dragging.disable();
+      status.textContent='Drag a straight line on the map to measure distance.';
+    } else {
+      map.dragging.enable();
+      measurePointerId=null;
+      measureStart=null;
+      status.textContent='Distance measurement finished.';
+    }
+  }
+
+  el('measureBtn').addEventListener('click', () => setMeasuring(!measuring));
+  el('clearMeasureBtn').addEventListener('click', clearMeasurement);
+
+  const mapContainer=map.getContainer();
+  mapContainer.addEventListener('pointerdown', event => {
+    if (!measuring || event.button !== 0 || event.target.closest('.leaflet-control')) return;
+    event.preventDefault();
+    measurePointerId=event.pointerId;
+    mapContainer.setPointerCapture(event.pointerId);
+    clearMeasurement();
+    measureStart=map.mouseEventToLatLng(event);
+    const endpointStyle={
+      radius:5,color:'#ffffff',weight:2,fillColor:'#e65100',fillOpacity:1,interactive:false
+    };
+    L.circleMarker(measureStart, endpointStyle).addTo(measurementLayer);
+    measureLine=L.polyline([measureStart,measureStart], {
+      color:'#e65100',weight:4,opacity:0.95,dashArray:'10 6',interactive:false
+    }).addTo(measurementLayer);
+    measureLine.bindTooltip('0.000 km', {
+      permanent:true,direction:'center',className:'measurement-label',opacity:1
+    }).openTooltip(measureStart);
+  });
+
+  mapContainer.addEventListener('pointermove', event => {
+    if (!measuring || event.pointerId !== measurePointerId || !measureStart || !measureLine) return;
+    event.preventDefault();
+    const end=map.mouseEventToLatLng(event);
+    measureLine.setLatLngs([measureStart,end]);
+    const midpoint=L.latLng(
+      (measureStart.lat+end.lat)/2,
+      (measureStart.lng+end.lng)/2
+    );
+    measureLine.setTooltipContent(formatDistanceKm(map.distance(measureStart,end)));
+    measureLine.openTooltip(midpoint);
+  });
+
+  function finishMeasurement(event) {
+    if (event.pointerId !== measurePointerId || !measureStart || !measureLine) return;
+    const end=map.mouseEventToLatLng(event);
+    if (map.distance(measureStart,end) < 0.01) {
+      clearMeasurement();
+    } else {
+      L.circleMarker(end, {
+        radius:5,color:'#ffffff',weight:2,fillColor:'#e65100',fillOpacity:1,interactive:false
+      }).addTo(measurementLayer);
+      el('clearMeasureBtn').disabled=false;
+      status.textContent=`Measured ${formatDistanceKm(map.distance(measureStart,end))}.`;
+    }
+    if (mapContainer.hasPointerCapture(event.pointerId)) {
+      mapContainer.releasePointerCapture(event.pointerId);
+    }
+    measurePointerId=null;
+    measureStart=null;
+    measureLine=null;
+  }
+
+  mapContainer.addEventListener('pointerup', finishMeasurement);
+  mapContainer.addEventListener('pointercancel', event => {
+    if (event.pointerId === measurePointerId) {
+      clearMeasurement();
+      measurePointerId=null;
+    }
+  });
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && measuring) setMeasuring(false);
+  });
 
   function dmToDD(deg, min, hem) {
     let v = Math.abs(Number(deg)) + Number(min)/60;
