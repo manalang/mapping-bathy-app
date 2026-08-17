@@ -42,6 +42,8 @@
       cursor:pointer;
     }
     button:hover,.button:hover{border-color:var(--sage-dark)}
+    button.active{background:#e65100;color:white;border-color:#bf4500}
+    button:disabled{opacity:.5;cursor:not-allowed}
     button.primary{background:var(--accent);color:white;border-color:var(--accent)}
     button.danger{color:var(--danger)}
     input[type=file]{display:none}
@@ -173,6 +175,19 @@
         -1px 1px 0 rgba(255,255,255,.95),1px 1px 0 rgba(255,255,255,.95);
       white-space:nowrap;pointer-events:none
     }
+    body.measure-mode #map{cursor:crosshair}
+    body.measure-mode .leaflet-interactive{cursor:crosshair}
+    .leaflet-tooltip.measurement-label{
+      background:rgba(255,255,255,.94);
+      border:2px solid #e65100;
+      border-radius:6px;
+      color:#7a2d00;
+      box-shadow:0 1px 4px rgba(0,0,0,.25);
+      font-size:13px;
+      font-weight:750;
+      padding:4px 7px
+    }
+    .leaflet-tooltip.measurement-label::before{display:none}
     .position-highlight{animation:highlight-pulse .75s ease-in-out 3}
     @keyframes highlight-pulse{
       0%,100%{stroke-width:4;stroke-opacity:1;fill-opacity:.35}
