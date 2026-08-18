@@ -183,8 +183,27 @@
         -1px 1px 0 rgba(255,255,255,.95),1px 1px 0 rgba(255,255,255,.95);
       white-space:nowrap;pointer-events:none
     }
-    body.measure-mode #map{cursor:crosshair}
+    body.measure-mode #map,body.map-add-mode #map{cursor:crosshair}
     body.measure-mode .leaflet-interactive{cursor:crosshair}
+    .map-add-form{display:grid;gap:8px;min-width:250px}
+    .map-add-coordinates{
+      padding:7px 8px;border-radius:6px;background:#eef4f0;
+      color:var(--text);font-size:12px;line-height:1.45
+    }
+    .map-add-form label{display:grid;gap:3px;color:var(--muted);font-size:11px}
+    .map-add-form input{
+      width:100%;border:1px solid var(--border);border-radius:6px;
+      padding:6px 7px;background:white;color:var(--text)
+    }
+    .map-add-actions{display:flex;gap:6px;margin-top:2px}
+    .axis-label{background:transparent;border:0;pointer-events:none}
+    .axis-label span{
+      display:inline-block;padding:2px 4px;border-radius:4px;
+      background:rgba(255,255,255,.86);border:1px solid rgba(41,77,92,.42);
+      color:#294d5c;font:650 10px/1.1 system-ui,sans-serif;white-space:nowrap
+    }
+    .axis-lat span{transform:translate(4px,-9px)}
+    .axis-lon span{transform:translate(-24px,-23px)}
     .leaflet-tooltip.measurement-label{
       background:rgba(255,255,255,.94);
       border:2px solid #e65100;
