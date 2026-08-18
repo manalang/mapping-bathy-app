@@ -22,6 +22,16 @@
     <button id="exportBtn">Export CSV</button>
     <button id="exportMapBtn">Export map PNG</button>
     <button id="measureBtn" aria-pressed="false">Measure distance</button>
+    <label class="unit-picker" for="measureUnits">
+      Units
+      <select id="measureUnits" aria-label="Measurement units">
+        <option value="auto">Auto (m / km)</option>
+        <option value="meters">Meters</option>
+        <option value="kilometers">Kilometers</option>
+        <option value="miles">Miles</option>
+        <option value="nautical">Nautical miles</option>
+      </select>
+    </label>
     <button id="clearMeasureBtn" class="mini" disabled>Clear measurement</button>
     <button id="fitBtn">Fit to positions</button>
     <span id="saveState" class="pill" title="Positions are stored only in this browser">Auto-save on</span>
