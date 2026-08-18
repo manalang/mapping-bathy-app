@@ -16,7 +16,6 @@
     <div class="sub">Annotated positions · decimal degrees / degrees + decimal minutes · spreadsheet import</div>
   </div>
   <div class="toolbar">
-    <button id="leftCollapseBtn" class="icon-button" aria-expanded="true" aria-label="Hide position workspace" title="Hide position workspace">◀</button>
     <label class="button" for="fileInput">Upload spreadsheet</label>
     <input id="fileInput" type="file" accept=".xlsx,.xls,.csv,.tsv" />
     <button id="exampleBtn">Load example data</button>
@@ -139,9 +138,12 @@
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px">
         <h2 style="margin:0">Positions <span id="count" class="pill">0</span></h2>
-        <button id="clearAllBtn" class="mini danger">Clear all</button>
+        <div class="position-actions">
+          <span class="resize-hint">Drag lower edge to resize</span>
+          <button id="clearAllBtn" class="mini danger">Clear all</button>
+        </div>
       </div>
-      <div class="tablewrap">
+      <div id="positionsTableWrap" class="tablewrap" aria-label="Resizable position list">
         <table>
           <thead>
             <tr>
