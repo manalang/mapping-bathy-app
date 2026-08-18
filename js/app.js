@@ -4,7 +4,7 @@
   const SPLIT_STORAGE_KEY = 'bathymetry-position-mapper.split.v1';
   const MEASURE_UNITS_KEY = 'bathymetry-position-mapper.measure-units.v1';
   const INPUT_COLLAPSED_KEY = 'bathymetry-position-mapper.input-collapsed.v1';
-  const LEFT_COLLAPSED_KEY = 'bathymetry-position-mapper.left-collapsed.v1';
+  const POSITION_LIST_HEIGHT_KEY = 'bathymetry-position-mapper.position-list-height.v1';
   // Keep the map inside one Web Mercator world. Repeated worlds cause a WMS
   // server to return geographically unrelated images beside the valid map.
   const worldBounds = L.latLngBounds(
@@ -775,11 +775,10 @@
   });
 
   const appLayout=document.querySelector('.app');
-  const leftPanel=document.querySelector('.left');
   const splitter=el('splitter');
   const inputPanel=el('inputPanel');
   const inputToggleBtn=el('inputToggleBtn');
-  const leftCollapseBtn=el('leftCollapseBtn');
+  const positionsTableWrap=el('positionsTableWrap');
 
   function setInputCollapsed(collapsed, persist=true) {
     inputPanel.classList.toggle('collapsed', collapsed);
@@ -792,30 +791,26 @@
     requestAnimationFrame(() => map.invalidateSize({pan:false}));
   }
 
-  function setLeftCollapsed(collapsed, persist=true) {
-    appLayout.classList.toggle('left-collapsed', collapsed);
-    leftPanel.hidden=collapsed;
-    splitter.hidden=collapsed;
-    leftCollapseBtn.setAttribute('aria-expanded', String(!collapsed));
-    leftCollapseBtn.setAttribute('aria-label', collapsed ? 'Show position workspace' : 'Hide position workspace');
-    leftCollapseBtn.textContent=collapsed ? '▶' : '◀';
-    leftCollapseBtn.title=collapsed ? 'Show position workspace' : 'Hide position workspace';
-    if (persist) localStorage.setItem(LEFT_COLLAPSED_KEY, String(collapsed));
-    requestAnimationFrame(() => {
-      map.invalidateSize({pan:false});
-      updateGraticule();
-    });
-  }
-
   inputToggleBtn.addEventListener('click', () => {
     setInputCollapsed(!inputPanel.classList.contains('collapsed'));
   });
-  leftCollapseBtn.addEventListener('click', () => {
-    setLeftCollapsed(!appLayout.classList.contains('left-collapsed'));
-  });
-
   setInputCollapsed(localStorage.getItem(INPUT_COLLAPSED_KEY) === 'true', false);
-  setLeftCollapsed(localStorage.getItem(LEFT_COLLAPSED_KEY) === 'true', false);
+
+  const savedListHeight=Number(localStorage.getItem(POSITION_LIST_HEIGHT_KEY));
+  if (Number.isFinite(savedListHeight) && savedListHeight >= 140) {
+    positionsTableWrap.style.height=`${savedListHeight}px`;
+  }
+  if ('ResizeObserver' in window) {
+    let resizeSaveTimer;
+    new ResizeObserver(entries => {
+      clearTimeout(resizeSaveTimer);
+      resizeSaveTimer=setTimeout(() => {
+        const height=Math.round(entries[0].contentRect.height);
+        if (height >= 140) localStorage.setItem(POSITION_LIST_HEIGHT_KEY, String(height));
+      }, 150);
+    }).observe(positionsTableWrap);
+  }
+
   const savedSplit=Number(localStorage.getItem(SPLIT_STORAGE_KEY));
   if (Number.isFinite(savedSplit) && savedSplit >= 25 && savedSplit <= 70) {
     appLayout.style.setProperty('--left-width', `${savedSplit}%`);
