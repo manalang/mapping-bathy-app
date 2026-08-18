@@ -62,12 +62,14 @@
   const contourLabelLayer = L.layerGroup();
   const highlightLayer = L.layerGroup().addTo(map);
   const measurementLayer = L.layerGroup().addTo(map);
+  const graticuleLayer = L.layerGroup().addTo(map);
   let contourLabelRequest = 0;
 
   L.control.layers({}, {
     'GEBCO bathymetry': bathy,
     'Depth contours': contours,
     'Position annotations': annotationLayer,
+    'Lat/lon axes': graticuleLayer,
     'Measurement': measurementLayer
   }, {
     collapsed:false
@@ -119,6 +121,7 @@
   const ddEntry = el('ddEntry'), dmEntry = el('dmEntry');
 
   let measuring=false;
+  let mapAddMode=false;
   let measurePointerId=null;
   let measureStart=null;
   let measureLine=null;
@@ -196,8 +199,88 @@
     }
   }
 
-  el('measureBtn').addEventListener('click', () => setMeasuring(!measuring));
+  function setMapAddMode(enabled) {
+    mapAddMode=enabled;
+    const button=el('mapAddBtn');
+    button.classList.toggle('active', enabled);
+    button.setAttribute('aria-pressed', String(enabled));
+    button.textContent=enabled ? 'Click map to add point' : 'Add point from map';
+    document.body.classList.toggle('map-add-mode', enabled);
+    status.textContent=enabled
+      ? 'Click a map location, review its coordinates, then add it to the position list.'
+      : 'Map point entry finished.';
+  }
+
+  el('measureBtn').addEventListener('click', () => {
+    if (!measuring && mapAddMode) setMapAddMode(false);
+    setMeasuring(!measuring);
+  });
+  el('mapAddBtn').addEventListener('click', () => {
+    if (!mapAddMode && measuring) setMeasuring(false);
+    setMapAddMode(!mapAddMode);
+  });
   el('clearMeasureBtn').addEventListener('click', clearMeasurement);
+
+  map.on('click', event => {
+    if (!mapAddMode) return;
+    const {lat,lng}=event.latlng;
+    const form=document.createElement('form');
+    form.className='map-add-form';
+
+    const coords=document.createElement('div');
+    coords.className='map-add-coordinates';
+    coords.innerHTML=`<strong>Selected position</strong><br>${lat.toFixed(7)}, ${lng.toFixed(7)}<br>${dmString(lat,true)}, ${dmString(lng,false)}`;
+    form.appendChild(coords);
+
+    const makeField=(labelText,input) => {
+      const label=document.createElement('label');
+      label.textContent=labelText;
+      label.appendChild(input);
+      form.appendChild(label);
+      return input;
+    };
+    const nameInput=makeField('Label / Site', document.createElement('input'));
+    nameInput.placeholder=`P${points.length+1}`;
+    const depthInput=document.createElement('input');
+    depthInput.type='number'; depthInput.min='0'; depthInput.step='1'; depthInput.placeholder='optional';
+    makeField('Depth (m)', depthInput);
+    const noteInput=makeField('Annotation', document.createElement('input'));
+    noteInput.placeholder='optional note';
+
+    const actions=document.createElement('div');
+    actions.className='map-add-actions';
+    const addButton=document.createElement('button');
+    addButton.type='submit'; addButton.className='primary'; addButton.textContent='Add to position list';
+    const cancelButton=document.createElement('button');
+    cancelButton.type='button'; cancelButton.textContent='Cancel';
+    cancelButton.addEventListener('click', () => {
+      map.closePopup();
+      setMapAddMode(false);
+    });
+    actions.append(addButton,cancelButton);
+    form.appendChild(actions);
+
+    form.addEventListener('submit', submitEvent => {
+      submitEvent.preventDefault();
+      const added=addPosition({
+        name:nameInput.value.trim(),
+        depth:depthInput.value,
+        note:noteInput.value.trim(),
+        lat,lon:lng
+      }, false);
+      if (added) {
+        map.closePopup();
+        setMapAddMode(false);
+        status.textContent=`Added ${nameInput.value.trim() || `P${points.length}`} from the map.`;
+      }
+    });
+
+    L.popup({maxWidth:310,closeButton:true})
+      .setLatLng(event.latlng)
+      .setContent(form)
+      .openOn(map);
+    setTimeout(() => nameInput.focus(), 0);
+  });
 
   const mapContainer=map.getContainer();
   mapContainer.addEventListener('pointerdown', event => {
@@ -740,6 +823,70 @@
     if (Number.isFinite(stored)) localStorage.setItem(SPLIT_STORAGE_KEY, String(stored));
   });
   window.addEventListener('resize', () => map.invalidateSize({pan:false}));
+
+  const graticuleSteps=[0.001,0.002,0.005,0.01,0.02,0.05,0.1,0.2,0.5,1,2,5,10,20,30,60];
+
+  function graticuleStep(span) {
+    const target=span/6;
+    return graticuleSteps.find(step => step >= target) || 60;
+  }
+
+  function axisCoordinate(value,isLat,step) {
+    const precision=step >= 1 ? 0 : Math.min(5,Math.ceil(-Math.log10(step))+1);
+    const hemisphere=isLat ? (value < 0 ? 'S' : 'N') : (value < 0 ? 'W' : 'E');
+    return `${Math.abs(value).toFixed(precision)}°${hemisphere}`;
+  }
+
+  function updateGraticule() {
+    graticuleLayer.clearLayers();
+    if (!map.hasLayer(graticuleLayer)) return;
+    const bounds=map.getBounds();
+    const latStep=graticuleStep(bounds.getNorth()-bounds.getSouth());
+    const lonStep=graticuleStep(bounds.getEast()-bounds.getWest());
+    const lineStyle={color:'#294d5c',weight:1,opacity:0.38,interactive:false};
+    let count=0;
+
+    for (
+      let lat=Math.ceil(bounds.getSouth()/latStep)*latStep;
+      lat <= bounds.getNorth()+latStep*0.001 && count < 40;
+      lat+=latStep,count++
+    ) {
+      const cleanLat=Number(lat.toFixed(8));
+      L.polyline([[cleanLat,bounds.getWest()],[cleanLat,bounds.getEast()]],lineStyle).addTo(graticuleLayer);
+      L.marker([cleanLat,bounds.getWest()], {
+        interactive:false,
+        icon:L.divIcon({
+          className:'axis-label axis-lat',
+          html:`<span>${axisCoordinate(cleanLat,true,latStep)}</span>`,
+          iconSize:null
+        })
+      }).addTo(graticuleLayer);
+    }
+
+    count=0;
+    for (
+      let lon=Math.ceil(bounds.getWest()/lonStep)*lonStep;
+      lon <= bounds.getEast()+lonStep*0.001 && count < 40;
+      lon+=lonStep,count++
+    ) {
+      const cleanLon=Number(lon.toFixed(8));
+      L.polyline([[bounds.getSouth(),cleanLon],[bounds.getNorth(),cleanLon]],lineStyle).addTo(graticuleLayer);
+      L.marker([bounds.getSouth(),cleanLon], {
+        interactive:false,
+        icon:L.divIcon({
+          className:'axis-label axis-lon',
+          html:`<span>${axisCoordinate(cleanLon,false,lonStep)}</span>`,
+          iconSize:null
+        })
+      }).addTo(graticuleLayer);
+    }
+  }
+
+  map.on('moveend zoomend resize', updateGraticule);
+  map.on('overlayadd overlayremove', event => {
+    if (event.layer === graticuleLayer) updateGraticule();
+  });
+  updateGraticule();
 
   function contourMidpoint(feature) {
     const geometry=feature?.geometry;
