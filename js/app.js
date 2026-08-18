@@ -775,6 +775,7 @@
   });
 
   const appLayout=document.querySelector('.app');
+  const leftPanel=document.querySelector('.left');
   const splitter=el('splitter');
   const inputPanel=el('inputPanel');
   const inputToggleBtn=el('inputToggleBtn');
@@ -782,17 +783,23 @@
 
   function setInputCollapsed(collapsed, persist=true) {
     inputPanel.classList.toggle('collapsed', collapsed);
+    el('inputPanelBody').hidden=collapsed;
     inputToggleBtn.setAttribute('aria-expanded', String(!collapsed));
-    inputToggleBtn.textContent=collapsed ? '▼ Roll down' : '▲ Roll up';
+    inputToggleBtn.setAttribute('aria-label', collapsed ? 'Roll down position input' : 'Roll up position input');
+    inputToggleBtn.title=collapsed ? 'Roll down position input' : 'Roll up position input';
+    inputToggleBtn.textContent=collapsed ? '▼' : '▲';
     if (persist) localStorage.setItem(INPUT_COLLAPSED_KEY, String(collapsed));
     requestAnimationFrame(() => map.invalidateSize({pan:false}));
   }
 
   function setLeftCollapsed(collapsed, persist=true) {
     appLayout.classList.toggle('left-collapsed', collapsed);
+    leftPanel.hidden=collapsed;
+    splitter.hidden=collapsed;
     leftCollapseBtn.setAttribute('aria-expanded', String(!collapsed));
-    leftCollapseBtn.textContent=collapsed ? 'Show workspace ▶' : '◀ Hide workspace';
-    leftCollapseBtn.title=collapsed ? 'Show the position workspace' : 'Hide the position workspace';
+    leftCollapseBtn.setAttribute('aria-label', collapsed ? 'Show position workspace' : 'Hide position workspace');
+    leftCollapseBtn.textContent=collapsed ? '▶' : '◀';
+    leftCollapseBtn.title=collapsed ? 'Show position workspace' : 'Hide position workspace';
     if (persist) localStorage.setItem(LEFT_COLLAPSED_KEY, String(collapsed));
     requestAnimationFrame(() => {
       map.invalidateSize({pan:false});
