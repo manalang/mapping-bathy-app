@@ -30,6 +30,14 @@
     header h1{margin:0;font-size:20px;font-weight:700}
     header .sub{color:var(--muted);font-size:13px}
     .toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+    .unit-picker{
+      display:flex;align-items:center;gap:5px;
+      color:var(--muted);font-size:12px
+    }
+    .unit-picker select{
+      border:1px solid var(--border);border-radius:7px;
+      background:white;color:var(--text);padding:7px 8px
+    }
     button,.button,input,select{
       font:inherit;
     }
