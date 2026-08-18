@@ -3,6 +3,8 @@
   const STORAGE_KEY = 'bathymetry-position-mapper.positions.v1';
   const SPLIT_STORAGE_KEY = 'bathymetry-position-mapper.split.v1';
   const MEASURE_UNITS_KEY = 'bathymetry-position-mapper.measure-units.v1';
+  const INPUT_COLLAPSED_KEY = 'bathymetry-position-mapper.input-collapsed.v1';
+  const LEFT_COLLAPSED_KEY = 'bathymetry-position-mapper.left-collapsed.v1';
   // Keep the map inside one Web Mercator world. Repeated worlds cause a WMS
   // server to return geographically unrelated images beside the valid map.
   const worldBounds = L.latLngBounds(
@@ -774,6 +776,39 @@
 
   const appLayout=document.querySelector('.app');
   const splitter=el('splitter');
+  const inputPanel=el('inputPanel');
+  const inputToggleBtn=el('inputToggleBtn');
+  const leftCollapseBtn=el('leftCollapseBtn');
+
+  function setInputCollapsed(collapsed, persist=true) {
+    inputPanel.classList.toggle('collapsed', collapsed);
+    inputToggleBtn.setAttribute('aria-expanded', String(!collapsed));
+    inputToggleBtn.textContent=collapsed ? '▼ Roll down' : '▲ Roll up';
+    if (persist) localStorage.setItem(INPUT_COLLAPSED_KEY, String(collapsed));
+    requestAnimationFrame(() => map.invalidateSize({pan:false}));
+  }
+
+  function setLeftCollapsed(collapsed, persist=true) {
+    appLayout.classList.toggle('left-collapsed', collapsed);
+    leftCollapseBtn.setAttribute('aria-expanded', String(!collapsed));
+    leftCollapseBtn.textContent=collapsed ? 'Show workspace ▶' : '◀ Hide workspace';
+    leftCollapseBtn.title=collapsed ? 'Show the position workspace' : 'Hide the position workspace';
+    if (persist) localStorage.setItem(LEFT_COLLAPSED_KEY, String(collapsed));
+    requestAnimationFrame(() => {
+      map.invalidateSize({pan:false});
+      updateGraticule();
+    });
+  }
+
+  inputToggleBtn.addEventListener('click', () => {
+    setInputCollapsed(!inputPanel.classList.contains('collapsed'));
+  });
+  leftCollapseBtn.addEventListener('click', () => {
+    setLeftCollapsed(!appLayout.classList.contains('left-collapsed'));
+  });
+
+  setInputCollapsed(localStorage.getItem(INPUT_COLLAPSED_KEY) === 'true', false);
+  setLeftCollapsed(localStorage.getItem(LEFT_COLLAPSED_KEY) === 'true', false);
   const savedSplit=Number(localStorage.getItem(SPLIT_STORAGE_KEY));
   if (Number.isFinite(savedSplit) && savedSplit >= 25 && savedSplit <= 70) {
     appLayout.style.setProperty('--left-width', `${savedSplit}%`);
