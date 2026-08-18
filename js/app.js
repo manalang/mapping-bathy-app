@@ -2,6 +2,7 @@
   const accent = '#486b5c';
   const STORAGE_KEY = 'bathymetry-position-mapper.positions.v1';
   const SPLIT_STORAGE_KEY = 'bathymetry-position-mapper.split.v1';
+  const MEASURE_UNITS_KEY = 'bathymetry-position-mapper.measure-units.v1';
   // Keep the map inside one Web Mercator world. Repeated worlds cause a WMS
   // server to return geographically unrelated images beside the valid map.
   const worldBounds = L.latLngBounds(
@@ -121,19 +122,60 @@
   let measurePointerId=null;
   let measureStart=null;
   let measureLine=null;
-
-  function formatDistanceKm(meters) {
-    const km=meters/1000;
-    if (km < 0.1) return `${km.toFixed(3)} km`;
-    if (km < 10) return `${km.toFixed(2)} km`;
-    if (km < 100) return `${km.toFixed(1)} km`;
-    return `${Math.round(km)} km`;
+  let completedMeasureLine=null;
+  let completedMeasureMeters=null;
+  const measureUnits=el('measureUnits');
+  const savedMeasureUnits=localStorage.getItem(MEASURE_UNITS_KEY);
+  if ([...measureUnits.options].some(option => option.value === savedMeasureUnits)) {
+    measureUnits.value=savedMeasureUnits;
   }
+
+  function adaptiveNumber(value) {
+    if (value < 10) return value.toFixed(2);
+    if (value < 100) return value.toFixed(1);
+    return String(Math.round(value));
+  }
+
+  function formatDistance(meters) {
+    const units=measureUnits.value;
+    if (units === 'meters') {
+      return `${meters < 100 ? meters.toFixed(1) : Math.round(meters)} m`;
+    }
+    if (units === 'kilometers') {
+      return `${adaptiveNumber(meters/1000)} km`;
+    }
+    if (units === 'miles') {
+      return `${adaptiveNumber(meters/1609.344)} mi`;
+    }
+    if (units === 'nautical') {
+      return `${adaptiveNumber(meters/1852)} nmi`;
+    }
+    if (meters < 1000) {
+      return `${meters < 100 ? meters.toFixed(1) : Math.round(meters)} m`;
+    }
+    return `${adaptiveNumber(meters/1000)} km`;
+  }
+
+  measureUnits.addEventListener('change', () => {
+    localStorage.setItem(MEASURE_UNITS_KEY, measureUnits.value);
+    if (completedMeasureLine && completedMeasureMeters !== null) {
+      const text=formatDistance(completedMeasureMeters);
+      completedMeasureLine.setTooltipContent(text);
+      status.textContent=`Measured ${text}.`;
+    }
+    if (measureLine && measureStart) {
+      const latLngs=measureLine.getLatLngs();
+      const end=latLngs[latLngs.length-1];
+      measureLine.setTooltipContent(formatDistance(map.distance(measureStart,end)));
+    }
+  });
 
   function clearMeasurement() {
     measurementLayer.clearLayers();
     measureStart=null;
     measureLine=null;
+    completedMeasureLine=null;
+    completedMeasureMeters=null;
     el('clearMeasureBtn').disabled=true;
   }
 
@@ -186,21 +228,24 @@
       (measureStart.lat+end.lat)/2,
       (measureStart.lng+end.lng)/2
     );
-    measureLine.setTooltipContent(formatDistanceKm(map.distance(measureStart,end)));
+    measureLine.setTooltipContent(formatDistance(map.distance(measureStart,end)));
     measureLine.openTooltip(midpoint);
   });
 
   function finishMeasurement(event) {
     if (event.pointerId !== measurePointerId || !measureStart || !measureLine) return;
     const end=map.mouseEventToLatLng(event);
-    if (map.distance(measureStart,end) < 0.01) {
+    const measuredMeters=map.distance(measureStart,end);
+    if (measuredMeters < 0.01) {
       clearMeasurement();
     } else {
       L.circleMarker(end, {
         radius:5,color:'#ffffff',weight:2,fillColor:'#e65100',fillOpacity:1,interactive:false
       }).addTo(measurementLayer);
+      completedMeasureLine=measureLine;
+      completedMeasureMeters=measuredMeters;
       el('clearMeasureBtn').disabled=false;
-      status.textContent=`Measured ${formatDistanceKm(map.distance(measureStart,end))}.`;
+      status.textContent=`Measured ${formatDistance(measuredMeters)}.`;
     }
     if (mapContainer.hasPointerCapture(event.pointerId)) {
       mapContainer.releasePointerCapture(event.pointerId);
