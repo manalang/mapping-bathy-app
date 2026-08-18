@@ -16,6 +16,7 @@
     <div class="sub">Annotated positions · decimal degrees / degrees + decimal minutes · spreadsheet import</div>
   </div>
   <div class="toolbar">
+    <button id="leftCollapseBtn" class="icon-button" aria-expanded="true" aria-label="Hide position workspace" title="Hide position workspace">◀</button>
     <label class="button" for="fileInput">Upload spreadsheet</label>
     <input id="fileInput" type="file" accept=".xlsx,.xls,.csv,.tsv" />
     <button id="exampleBtn">Load example data</button>
@@ -44,7 +45,7 @@
     <div id="inputPanel" class="card collapsible-card">
       <div class="collapsible-header">
         <h2>Position input</h2>
-        <button id="inputToggleBtn" class="mini" aria-expanded="true" aria-controls="inputPanelBody">▲ Roll up</button>
+        <button id="inputToggleBtn" class="icon-button" aria-expanded="true" aria-controls="inputPanelBody" aria-label="Roll up position input" title="Roll up position input">▲</button>
       </div>
       <div id="inputPanelBody" class="collapsible-body">
       <h3>Add a position</h3>
@@ -167,7 +168,6 @@
   <section class="right">
     <div id="map"></div>
     <div id="status" class="status">Loading GEBCO bathymetry…</div>
-    <button id="leftCollapseBtn" class="panel-collapse" aria-expanded="true" title="Hide the position workspace">◀ Hide workspace</button>
   </section>
 </div>
 
