@@ -41,8 +41,13 @@
 
 <div class="app">
   <section class="left">
-    <div class="card">
-      <h2>Add a position</h2>
+    <div id="inputPanel" class="card collapsible-card">
+      <div class="collapsible-header">
+        <h2>Position input</h2>
+        <button id="inputToggleBtn" class="mini" aria-expanded="true" aria-controls="inputPanelBody">▲ Roll up</button>
+      </div>
+      <div id="inputPanelBody" class="collapsible-body">
+      <h3>Add a position</h3>
       <div class="row" style="grid-template-columns:1fr 1fr 1fr">
         <div class="field">
           <label for="name">Label / Site</label>
@@ -117,16 +122,16 @@
       <div class="hint">
         Internally, all positions are stored as WGS‑84 decimal degrees. Conversion to degrees + decimal minutes is calculated automatically.
       </div>
-    </div>
 
-    <div class="card">
-      <h2>Spreadsheet import</h2>
+      <div class="input-divider"></div>
+      <h3>Spreadsheet import</h3>
       <div id="dropZone" class="drop">
         Drop an Excel/CSV file here, or use <b>Upload spreadsheet</b>.
       </div>
       <div class="hint">
         Recognized column names include <b>Name/Site/Label</b>, <b>Latitude/Lat</b>, <b>Longitude/Lon/Long</b>,
         and <b>Annotation/Note/Description</b>. Decimal-degree latitude/longitude is the recommended spreadsheet format.
+      </div>
       </div>
     </div>
 
@@ -162,6 +167,7 @@
   <section class="right">
     <div id="map"></div>
     <div id="status" class="status">Loading GEBCO bathymetry…</div>
+    <button id="leftCollapseBtn" class="panel-collapse" aria-expanded="true" title="Hide the position workspace">◀ Hide workspace</button>
   </section>
 </div>
 
