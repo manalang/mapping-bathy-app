@@ -143,11 +143,18 @@
           <button id="clearAllBtn" class="mini danger">Clear all</button>
         </div>
       </div>
+      <div class="position-search" role="search">
+        <span aria-hidden="true">⌕</span>
+        <input id="positionSearch" type="search" placeholder="Search positions" autocomplete="off"
+          aria-label="Search site, coordinates, depth, or annotation">
+        <button id="clearSearchBtn" type="button" class="search-clear" title="Clear search" aria-label="Clear position search">×</button>
+      </div>
       <div id="positionsTableWrap" class="tablewrap" aria-label="Resizable position list">
         <table>
           <thead>
             <tr>
               <th class="select-col"><button id="selectAllBtn" class="header-action" title="Show or hide all positions">Show</button></th>
+              <th class="select-col" title="Show the site annotation on the map">Label</th>
               <th><button class="sort-button" data-sort="name">Site</button></th>
               <th class="coords-dd"><button class="sort-button" data-sort="lat">Latitude DD</button></th>
               <th class="coords-dd"><button class="sort-button" data-sort="lon">Longitude DD</button></th>

@@ -96,6 +96,7 @@
 
   let points = [];
   let sortState = {key:null, direction:1};
+  let positionSearch = '';
   const markerLayer = L.layerGroup().addTo(map);
   const annotationLayer = L.layerGroup().addTo(map);
   const contourLabelLayer = L.layerGroup();
@@ -135,7 +136,7 @@
 
   function savePoints() {
     try {
-      const stored = points.map(({name,lat,lon,depth,note,visible,color}) => ({name,lat,lon,depth,note,visible,color}));
+      const stored = points.map(({name,lat,lon,depth,note,visible,annotationVisible,color}) => ({name,lat,lon,depth,note,visible,annotationVisible,color}));
       localStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
       setSaveState(points.length ? `${points.length} saved locally` : 'Auto-save on');
     } catch (err) {
@@ -159,6 +160,7 @@
           depth:p.depth,
           note:String(p.note || ''),
           visible:p.visible !== false,
+          annotationVisible:p.annotationVisible !== false,
           color:/^#[0-9a-f]{6}$/i.test(p.color || '') ? p.color : accent
         }));
       return points.length;
@@ -474,6 +476,7 @@
       depth,
       note: p.note || '',
       visible:p.visible !== false,
+      annotationVisible:p.annotationVisible !== false,
       color:/^#[0-9a-f]{6}$/i.test(p.color || '') ? p.color : accent
     });
     render();
@@ -487,12 +490,30 @@
   });
   el('clearBtn').addEventListener('click', clearEntry);
 
+  function matchesPositionSearch(p) {
+    if (!positionSearch) return true;
+    const values = [
+      p.name,
+      p.lat,
+      p.lon,
+      p.lat.toFixed(7),
+      p.lon.toFixed(7),
+      dmString(p.lat,true),
+      dmString(p.lon,false),
+      p.depth === null ? '' : p.depth,
+      p.depth === null ? '' : Math.round(p.depth),
+      p.note
+    ];
+    return values.join(' ').toLocaleLowerCase().includes(positionSearch);
+  }
+
   function render() {
-    el('count').textContent = points.length;
+    const matchedPoints = points.filter(matchesPositionSearch);
+    el('count').textContent = positionSearch ? `${matchedPoints.length}/${points.length}` : points.length;
     const tb = el('tbody');
     tb.innerHTML = '';
 
-    const displayedPoints = [...points].sort((a,b) => {
+    const displayedPoints = [...matchedPoints].sort((a,b) => {
       if (!sortState.key) return 0;
       let av=a[sortState.key], bv=b[sortState.key];
       if (sortState.key === 'name' || sortState.key === 'note') {
@@ -519,10 +540,21 @@
       });
       selected.appendChild(selectedIn); tr.appendChild(selected);
 
+      const annotationSelected = document.createElement('td');
+      annotationSelected.className='select-col';
+      const annotationIn = document.createElement('input');
+      annotationIn.type='checkbox'; annotationIn.checked=p.annotationVisible;
+      annotationIn.setAttribute('aria-label', `Show annotation for ${p.name}`);
+      annotationIn.addEventListener('change', () => {
+        p.annotationVisible=annotationIn.checked;
+        renderMarkers(); savePoints();
+      });
+      annotationSelected.appendChild(annotationIn); tr.appendChild(annotationSelected);
+
       const site = document.createElement('td');
       const siteIn = document.createElement('input');
       siteIn.value = p.name;
-      siteIn.addEventListener('change', () => { p.name=siteIn.value; renderMarkers(); savePoints(); });
+      siteIn.addEventListener('change', () => { p.name=siteIn.value; render(); });
       site.appendChild(siteIn);
       tr.appendChild(site);
 
@@ -531,7 +563,7 @@
       const latIn = document.createElement('input');
       latIn.type='number'; latIn.step='any'; latIn.value=p.lat.toFixed(7);
       latIn.addEventListener('change', () => {
-        const v=Number(latIn.value); if(validate(v,p.lon)){p.lat=v;renderMarkers();savePoints();} else {latIn.value=p.lat.toFixed(7);}
+        const v=Number(latIn.value); if(validate(v,p.lon)){p.lat=v;render();} else {latIn.value=p.lat.toFixed(7);}
       });
       latDD.appendChild(latIn); tr.appendChild(latDD);
 
@@ -540,7 +572,7 @@
       const lonIn = document.createElement('input');
       lonIn.type='number'; lonIn.step='any'; lonIn.value=p.lon.toFixed(7);
       lonIn.addEventListener('change', () => {
-        const v=Number(lonIn.value); if(validate(p.lat,v)){p.lon=v;renderMarkers();savePoints();} else {lonIn.value=p.lon.toFixed(7);}
+        const v=Number(lonIn.value); if(validate(p.lat,v)){p.lon=v;render();} else {lonIn.value=p.lon.toFixed(7);}
       });
       lonDD.appendChild(lonIn); tr.appendChild(lonDD);
 
@@ -552,7 +584,7 @@
       depthIn.type='number'; depthIn.min='0'; depthIn.step='1'; depthIn.value=p.depth === null ? '' : Math.round(p.depth);
       depthIn.addEventListener('change', () => {
         const v=parseDepth(depthIn.value);
-        if(!Number.isNaN(v)){p.depth=v === null ? null : Math.round(v);depthIn.value=p.depth ?? '';renderMarkers();savePoints();} else {depthIn.value=p.depth === null ? '' : Math.round(p.depth);}
+        if(!Number.isNaN(v)){p.depth=v === null ? null : Math.round(v);depthIn.value=p.depth ?? '';render();} else {depthIn.value=p.depth === null ? '' : Math.round(p.depth);}
       });
       depth.appendChild(depthIn); tr.appendChild(depth);
 
@@ -581,7 +613,7 @@
 
       const note = document.createElement('td');
       const noteIn = document.createElement('input'); noteIn.value=p.note;
-      noteIn.addEventListener('change', () => {p.note=noteIn.value;renderMarkers();savePoints();});
+      noteIn.addEventListener('change', () => {p.note=noteIn.value;render();});
       note.appendChild(noteIn); tr.appendChild(note);
 
       const act = document.createElement('td');
@@ -621,7 +653,7 @@
   function renderMarkers() {
     markerLayer.clearLayers();
     annotationLayer.clearLayers();
-    points.filter(p => p.visible).forEach(p => {
+    points.filter(p => p.visible && matchesPositionSearch(p)).forEach(p => {
       const m = L.circleMarker([p.lat,p.lon], {
         radius:6, color:'#ffffff', weight:2, fillColor:p.color, fillOpacity:1
       });
@@ -629,6 +661,7 @@
       m.bindPopup(popup);
       markerLayer.addLayer(m);
 
+      if (!p.annotationVisible) return;
       const labelAnchor = L.circleMarker([p.lat,p.lon], {
         radius:0,
         opacity:0,
@@ -646,7 +679,7 @@
   }
 
   function fitMap() {
-    const visiblePoints=points.filter(p=>p.visible);
+    const visiblePoints=points.filter(p=>p.visible && matchesPositionSearch(p));
     if (!visiblePoints.length) return;
     if (visiblePoints.length===1) map.setView([visiblePoints[0].lat,visiblePoints[0].lon], 14);
     else map.fitBounds(L.latLngBounds(visiblePoints.map(p=>[p.lat,p.lon])), {padding:[35,35],maxZoom:18});
@@ -666,10 +699,27 @@
   });
 
   el('selectAllBtn').addEventListener('click', () => {
-    const showAll=points.some(p=>!p.visible);
-    points.forEach(p=>{p.visible=showAll;});
+    const matchedPoints=points.filter(matchesPositionSearch);
+    const showAll=matchedPoints.some(p=>!p.visible);
+    matchedPoints.forEach(p=>{p.visible=showAll;});
     render();
   });
+
+  const positionSearchEl=el('positionSearch');
+  const clearSearchBtn=el('clearSearchBtn');
+  positionSearchEl.addEventListener('input', () => {
+    positionSearch=positionSearchEl.value.trim().toLocaleLowerCase();
+    clearSearchBtn.disabled=!positionSearch;
+    render();
+  });
+  clearSearchBtn.addEventListener('click', () => {
+    positionSearchEl.value='';
+    positionSearch='';
+    clearSearchBtn.disabled=true;
+    render();
+    positionSearchEl.focus();
+  });
+  clearSearchBtn.disabled=true;
 
   function escapeHtml(s='') {
     return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -724,7 +774,12 @@
         if(validate(lat,lon) && !Number.isNaN(depth)){
           const color=String(first(row,['Color','MarkerColor']) || accent);
           const visibleValue=String(first(row,['Visible','Show','Selected']) || 'true').toLowerCase();
-          addPosition({name:String(name||''),note:String(note||''),lat,lon,depth,color,visible:!['false','no','0','hidden'].includes(visibleValue)},false);
+          const annotationValue=String(first(row,['AnnotationVisible','Annotation Visible','ShowAnnotation','Show Annotation','LabelVisible']) || 'true').toLowerCase();
+          addPosition({
+            name:String(name||''),note:String(note||''),lat,lon,depth,color,
+            visible:!['false','no','0','hidden'].includes(visibleValue),
+            annotationVisible:!['false','no','0','hidden'].includes(annotationValue)
+          },false);
           added++;
         } else skipped++;
       }
@@ -793,6 +848,7 @@
       Longitude_DM:dmString(p.lon,false),
       Depth_m:p.depth === null ? '' : Math.round(p.depth),
       Visible:p.visible,
+      Annotation_Visible:p.annotationVisible,
       Marker_Color:p.color,
       Annotation:p.note
     }));
