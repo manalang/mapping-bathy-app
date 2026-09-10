@@ -9,6 +9,8 @@ A browser-based mapping tool for annotated ocean positions.
 - Automatic DD ↔ DM conversion
 - Import XLSX, XLS, CSV, or TSV spreadsheets
 - Edit site labels and annotations in the browser
+- Toggle annotations independently for each site
+- Search across site names, coordinates, depths, and annotations
 - Display bathymetry using the GEBCO Web Map Service
 - Overlay land in sage green
 - Export mapped positions to CSV
