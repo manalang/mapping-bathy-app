@@ -5,6 +5,7 @@
   const MEASURE_UNITS_KEY = 'bathymetry-position-mapper.measure-units.v1';
   const INPUT_COLLAPSED_KEY = 'bathymetry-position-mapper.input-collapsed.v1';
   const POSITION_LIST_HEIGHT_KEY = 'bathymetry-position-mapper.position-list-height.v1';
+  const BASEMAP_STORAGE_KEY = 'bathymetry-position-mapper.basemap.v1';
   // Keep the map inside one Web Mercator world. Repeated worlds cause a WMS
   // server to return geographically unrelated images beside the valid map.
   const worldBounds = L.latLngBounds(
@@ -33,7 +34,33 @@
     maxZoom:22,
     crossOrigin:true,
     attribution:'GEBCO Compilation Group — latest WMS'
-  }).addTo(map);
+  });
+
+  // NOAA's chart display service renders the latest ENC data with traditional
+  // paper-chart symbology. It is especially useful in detailed U.S. coastal
+  // and inland waters, but is not a substitute for an official navigation aid.
+  const noaaChart = L.tileLayer.wms(
+    'https://gis.charttools.noaa.gov/arcgis/rest/services/MCS/NOAAChartDisplay/MapServer/exts/MaritimeChartService/WMSServer?',
+    {
+      layers:'1,2,3,4,5,6,7',
+      styles:'',
+      format:'image/png',
+      transparent:false,
+      version:'1.3.0',
+      crs:L.CRS.EPSG3857,
+      noWrap:true,
+      bounds:worldBounds,
+      updateWhenZooming:false,
+      keepBuffer:2,
+      maxZoom:22,
+      crossOrigin:true,
+      attribution:'NOAA Chart Display Service — not for navigation'
+    }
+  );
+
+  const savedBasemap = localStorage.getItem(BASEMAP_STORAGE_KEY);
+  const initialBasemap = savedBasemap === 'noaa' ? noaaChart : bathy;
+  initialBasemap.addTo(map);
 
   // NOAA's cached global bathymetric contours are a transparent Web Mercator overlay.
   const contours = L.tileLayer(
@@ -52,8 +79,18 @@
   );
 
   const status = document.getElementById('status');
-  bathy.on('load', () => { status.textContent = 'GEBCO bathymetry loaded.'; });
-  bathy.on('tileerror', () => { status.textContent = 'GEBCO bathymetry tile error — check internet access or WMS availability.'; });
+  bathy.on('load', () => {
+    if (map.hasLayer(bathy)) status.textContent = 'GEBCO bathymetry loaded.';
+  });
+  bathy.on('tileerror', () => {
+    if (map.hasLayer(bathy)) status.textContent = 'GEBCO bathymetry tile error — check internet access or WMS availability.';
+  });
+  noaaChart.on('load', () => {
+    if (map.hasLayer(noaaChart)) status.textContent = 'NOAA nautical chart loaded — not for navigation.';
+  });
+  noaaChart.on('tileerror', () => {
+    if (map.hasLayer(noaaChart)) status.textContent = 'NOAA nautical chart tile error — check internet access or service availability.';
+  });
 
   L.control.scale({imperial:false,metric:true}).addTo(map);
 
@@ -67,8 +104,10 @@
   const graticuleLayer = L.layerGroup().addTo(map);
   let contourLabelRequest = 0;
 
-  L.control.layers({}, {
+  L.control.layers({
     'GEBCO bathymetry': bathy,
+    'NOAA nautical chart': noaaChart
+  }, {
     'Depth contours': contours,
     'Position annotations': annotationLayer,
     'Lat/lon axes': graticuleLayer,
@@ -76,6 +115,14 @@
   }, {
     collapsed:false
   }).addTo(map);
+
+  map.on('baselayerchange', event => {
+    const isNoaa = event.layer === noaaChart;
+    localStorage.setItem(BASEMAP_STORAGE_KEY, isNoaa ? 'noaa' : 'gebco');
+    status.textContent = isNoaa
+      ? 'Loading NOAA nautical chart — not for navigation.'
+      : 'Loading GEBCO bathymetry…';
+  });
 
   const el = id => document.getElementById(id);
   const nameEl = el('name'), noteEl = el('note');
