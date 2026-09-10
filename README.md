@@ -73,12 +73,13 @@ This app currently uses:
 - topojson-client 3.1.0
 - Natural Earth land geometry distributed through world-atlas
 - GEBCO `GEBCO_Latest` WMS bathymetry
+- NOAA Chart Display Service WMS, rendered from current ENC data
 
 Internet access is therefore required for the map and external JavaScript libraries.
 
 ## Important
 
-GEBCO bathymetry is suitable for visualization and scientific context, but the map should **not** be used for navigation or safety-of-life decisions.
+GEBCO bathymetry and the NOAA nautical chart layer are suitable for visualization and scientific context, but this app should **not** be used for navigation or safety-of-life decisions.
 
 ## Repository structure
 
