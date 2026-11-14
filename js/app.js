@@ -6,6 +6,7 @@
   const INPUT_COLLAPSED_KEY = 'bathymetry-position-mapper.input-collapsed.v1';
   const POSITION_LIST_HEIGHT_KEY = 'bathymetry-position-mapper.position-list-height.v1';
   const BASEMAP_STORAGE_KEY = 'bathymetry-position-mapper.basemap.v1';
+  const SUBSET_STATE_KEY = 'bathymetry-position-mapper.subsets.v1';
   // Keep the map inside one Web Mercator world. Repeated worlds cause a WMS
   // server to return geographically unrelated images beside the valid map.
   const worldBounds = L.latLngBounds(
@@ -97,6 +98,7 @@
   let points = [];
   let sortState = {key:null, direction:1};
   let positionSearch = '';
+  let subsetState = {};
   const markerLayer = L.layerGroup().addTo(map);
   const annotationLayer = L.layerGroup().addTo(map);
   const contourLabelLayer = L.layerGroup();
@@ -136,7 +138,7 @@
 
   function savePoints() {
     try {
-      const stored = points.map(({name,lat,lon,depth,note,visible,annotationVisible,color}) => ({name,lat,lon,depth,note,visible,annotationVisible,color}));
+      const stored = points.map(({name,subset,lat,lon,depth,note,visible,annotationVisible,color}) => ({name,subset,lat,lon,depth,note,visible,annotationVisible,color}));
       localStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
       setSaveState(points.length ? `${points.length} saved locally` : 'Auto-save on');
     } catch (err) {
@@ -155,6 +157,7 @@
         .map((p,index) => ({
           id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()+index+Math.random()),
           name: String(p.name || `P${index+1}`),
+          subset:String(p.subset || ''),
           lat:p.lat,
           lon:p.lon,
           depth:p.depth,
@@ -167,6 +170,37 @@
     } catch (err) {
       console.warn('Could not restore saved positions.', err);
       return 0;
+    }
+  }
+
+  function subsetLabel(value) {
+    return String(value || '').trim() || 'Ungrouped';
+  }
+
+  function subsetKey(value) {
+    return subsetLabel(value).toLocaleLowerCase();
+  }
+
+  function getSubsetState(value) {
+    const key=subsetKey(value);
+    if (!subsetState[key]) subsetState[key]={visible:true,collapsed:false};
+    return subsetState[key];
+  }
+
+  function saveSubsetState() {
+    try {
+      localStorage.setItem(SUBSET_STATE_KEY, JSON.stringify(subsetState));
+    } catch (err) {
+      console.warn('Could not save subset display settings.', err);
+    }
+  }
+
+  function restoreSubsetState() {
+    try {
+      const stored=JSON.parse(localStorage.getItem(SUBSET_STATE_KEY) || '{}');
+      subsetState=stored && typeof stored === 'object' && !Array.isArray(stored) ? stored : {};
+    } catch (err) {
+      subsetState={};
     }
   }
   const ddEntry = el('ddEntry'), dmEntry = el('dmEntry');
@@ -292,6 +326,9 @@
     };
     const nameInput=makeField('Label / Site', document.createElement('input'));
     nameInput.placeholder=`P${points.length+1}`;
+    const subsetInput=document.createElement('input');
+    subsetInput.setAttribute('list','subsetOptions'); subsetInput.placeholder='optional subset';
+    makeField('Subset', subsetInput);
     const depthInput=document.createElement('input');
     depthInput.type='number'; depthInput.min='0'; depthInput.step='1'; depthInput.placeholder='optional';
     makeField('Depth (m)', depthInput);
@@ -315,6 +352,7 @@
       submitEvent.preventDefault();
       const added=addPosition({
         name:nameInput.value.trim(),
+        subset:subsetInput.value.trim(),
         depth:depthInput.value,
         note:noteInput.value.trim(),
         lat,lon:lng
@@ -443,7 +481,7 @@
   });
 
   function clearEntry() {
-    ['name','depth','note','latDD','lonDD','latDeg','latMin','lonDeg','lonMin'].forEach(id => el(id).value='');
+    ['name','subset','depth','note','latDD','lonDD','latDeg','latMin','lonDeg','lonMin'].forEach(id => el(id).value='');
     el('latHem').value='N';
     el('lonHem').value='W';
   }
@@ -471,6 +509,7 @@
     points.push({
       id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()+Math.random()),
       name: p.name || `P${points.length+1}`,
+      subset:String(p.subset || '').trim(),
       lat: Number(p.lat),
       lon: Number(p.lon),
       depth,
@@ -486,7 +525,7 @@
 
   el('addBtn').addEventListener('click', () => {
     const c = readEntryCoordinates();
-    if (addPosition({name:nameEl.value.trim(),depth:el('depth').value,note:noteEl.value.trim(),...c})) clearEntry();
+    if (addPosition({name:nameEl.value.trim(),subset:el('subset').value.trim(),depth:el('depth').value,note:noteEl.value.trim(),...c})) clearEntry();
   });
   el('clearBtn').addEventListener('click', clearEntry);
 
@@ -494,6 +533,7 @@
     if (!positionSearch) return true;
     const values = [
       p.name,
+      subsetLabel(p.subset),
       p.lat,
       p.lon,
       p.lat.toFixed(7),
@@ -516,7 +556,7 @@
     const displayedPoints = [...matchedPoints].sort((a,b) => {
       if (!sortState.key) return 0;
       let av=a[sortState.key], bv=b[sortState.key];
-      if (sortState.key === 'name' || sortState.key === 'note') {
+      if (sortState.key === 'name' || sortState.key === 'note' || sortState.key === 'subset') {
         return String(av || '').localeCompare(String(bv || '')) * sortState.direction;
       }
       av = av === null ? Infinity : Number(av);
@@ -524,9 +564,62 @@
       return (av-bv) * sortState.direction;
     });
 
+    const grouped=new Map();
     for (const p of displayedPoints) {
+      const label=subsetLabel(p.subset);
+      if (!grouped.has(label)) grouped.set(label,[]);
+      grouped.get(label).push(p);
+    }
+    const groupEntries=[...grouped.entries()].sort(([a],[b]) => {
+      if (a === 'Ungrouped') return 1;
+      if (b === 'Ungrouped') return -1;
+      const direction=sortState.key === 'subset' ? sortState.direction : 1;
+      return a.localeCompare(b) * direction;
+    });
+
+    const subsetOptions=el('subsetOptions');
+    subsetOptions.innerHTML='';
+    [...new Set(points.map(p=>String(p.subset || '').trim()).filter(Boolean))]
+      .sort((a,b)=>a.localeCompare(b))
+      .forEach(name => {
+        const option=document.createElement('option'); option.value=name; subsetOptions.appendChild(option);
+      });
+
+    for (const [groupName,groupPoints] of groupEntries) {
+      const state=getSubsetState(groupName);
+      const allGroupPoints=points.filter(p=>subsetLabel(p.subset)===groupName);
+      const groupRow=document.createElement('tr');
+      groupRow.className='subset-row';
+      const groupCell=document.createElement('td');
+      groupCell.colSpan=12;
+      const groupHeader=document.createElement('div');
+      groupHeader.className='subset-header';
+      const collapse=document.createElement('button');
+      collapse.type='button'; collapse.className='subset-toggle';
+      const effectivelyCollapsed=state.collapsed && !positionSearch;
+      collapse.textContent=effectivelyCollapsed ? '▶' : '▼';
+      collapse.title=effectivelyCollapsed ? `Expand ${groupName}` : `Roll up ${groupName}`;
+      collapse.setAttribute('aria-label', collapse.title);
+      collapse.addEventListener('click', () => {
+        state.collapsed=!state.collapsed; saveSubsetState(); render();
+      });
+      const groupVisible=document.createElement('input');
+      groupVisible.type='checkbox'; groupVisible.className='subset-visibility'; groupVisible.checked=state.visible !== false;
+      groupVisible.title=`Show or hide ${groupName} on the map`;
+      groupVisible.setAttribute('aria-label', groupVisible.title);
+      groupVisible.addEventListener('change', () => {
+        state.visible=groupVisible.checked; saveSubsetState(); render();
+      });
+      const groupLabel=document.createElement('span'); groupLabel.className='subset-name'; groupLabel.textContent=groupName;
+      const groupCount=document.createElement('span'); groupCount.className='subset-count';
+      groupCount.textContent=positionSearch ? `${groupPoints.length}/${allGroupPoints.length}` : String(allGroupPoints.length);
+      groupHeader.append(collapse,groupVisible,groupLabel,groupCount);
+      groupCell.appendChild(groupHeader); groupRow.appendChild(groupCell); tb.appendChild(groupRow);
+      if (effectivelyCollapsed) continue;
+
+      for (const p of groupPoints) {
       const tr = document.createElement('tr');
-      tr.classList.toggle('position-hidden', !p.visible);
+      tr.classList.toggle('position-hidden', !p.visible || state.visible === false);
 
       const selected = document.createElement('td');
       selected.className='select-col';
@@ -535,7 +628,7 @@
       selectedIn.setAttribute('aria-label', `Show ${p.name} on map`);
       selectedIn.addEventListener('change', () => {
         p.visible=selectedIn.checked;
-        tr.classList.toggle('position-hidden', !p.visible);
+        tr.classList.toggle('position-hidden', !p.visible || state.visible === false);
         renderMarkers(); savePoints();
       });
       selected.appendChild(selectedIn); tr.appendChild(selected);
@@ -557,6 +650,12 @@
       siteIn.addEventListener('change', () => { p.name=siteIn.value; render(); });
       site.appendChild(siteIn);
       tr.appendChild(site);
+
+      const subset = document.createElement('td');
+      const subsetIn = document.createElement('input');
+      subsetIn.value=p.subset; subsetIn.setAttribute('list','subsetOptions'); subsetIn.placeholder='Ungrouped';
+      subsetIn.addEventListener('change', () => {p.subset=subsetIn.value.trim();render();});
+      subset.appendChild(subsetIn); tr.appendChild(subset);
 
       const latDD = document.createElement('td');
       latDD.className='coords-dd';
@@ -626,16 +725,25 @@
         focusPosition(p);
       });
       tb.appendChild(tr);
+      }
     }
     renderMarkers();
     savePoints();
   }
 
   function focusPosition(p) {
+    const state=getSubsetState(p.subset);
+    let displayChanged=false;
+    if (state.visible === false) {
+      state.visible=true;
+      saveSubsetState();
+      displayChanged=true;
+    }
     if (!p.visible) {
       p.visible=true;
-      render();
+      displayChanged=true;
     }
+    if (displayChanged) render();
     map.flyTo([p.lat,p.lon], Math.max(map.getZoom(), 16), {duration:0.65});
     highlightLayer.clearLayers();
     const highlight=L.circleMarker([p.lat,p.lon], {
@@ -653,7 +761,7 @@
   function renderMarkers() {
     markerLayer.clearLayers();
     annotationLayer.clearLayers();
-    points.filter(p => p.visible && matchesPositionSearch(p)).forEach(p => {
+    points.filter(p => p.visible && getSubsetState(p.subset).visible !== false && matchesPositionSearch(p)).forEach(p => {
       const m = L.circleMarker([p.lat,p.lon], {
         radius:6, color:'#ffffff', weight:2, fillColor:p.color, fillOpacity:1
       });
@@ -679,7 +787,7 @@
   }
 
   function fitMap() {
-    const visiblePoints=points.filter(p=>p.visible && matchesPositionSearch(p));
+    const visiblePoints=points.filter(p=>p.visible && getSubsetState(p.subset).visible !== false && matchesPositionSearch(p));
     if (!visiblePoints.length) return;
     if (visiblePoints.length===1) map.setView([visiblePoints[0].lat,visiblePoints[0].lon], 14);
     else map.fitBounds(L.latLngBounds(visiblePoints.map(p=>[p.lat,p.lon])), {padding:[35,35],maxZoom:18});
@@ -763,6 +871,7 @@
       let added=0, skipped=0;
       for(const row of rows){
         const name=first(row,['Name','Site','Label','Station','ID','Point']);
+        const subset=first(row,['Subset','Group','Collection','PositionSubset','SiteGroup']);
         const note=first(row,['Annotation','Note','Description','Comment','Comments']);
         let lat=first(row,['Latitude','Lat','LatitudeDD','LatDD']);
         let lon=first(row,['Longitude','Lon','Long','Lng','LongitudeDD','LonDD']);
@@ -776,7 +885,7 @@
           const visibleValue=String(first(row,['Visible','Show','Selected']) || 'true').toLowerCase();
           const annotationValue=String(first(row,['AnnotationVisible','Annotation Visible','ShowAnnotation','Show Annotation','LabelVisible']) || 'true').toLowerCase();
           addPosition({
-            name:String(name||''),note:String(note||''),lat,lon,depth,color,
+            name:String(name||''),subset:String(subset||''),note:String(note||''),lat,lon,depth,color,
             visible:!['false','no','0','hidden'].includes(visibleValue),
             annotationVisible:!['false','no','0','hidden'].includes(annotationValue)
           },false);
@@ -798,7 +907,9 @@
   dz.addEventListener('drop',e=>importFile(e.dataTransfer.files[0]));
 
   el('clearAllBtn').addEventListener('click',()=>{
-    if(points.length && confirm('Remove all positions?')){points=[];render();}
+    if(points.length && confirm('Remove all positions?')){
+      points=[]; subsetState={}; saveSubsetState(); render();
+    }
   });
 
   el('exportMapBtn').addEventListener('click', async () => {
@@ -842,6 +953,7 @@
   el('exportBtn').addEventListener('click',()=>{
     const out=points.map(p=>({
       Name:p.name,
+      Subset:p.subset,
       Latitude_DD:p.lat,
       Longitude_DD:p.lon,
       Latitude_DM:dmString(p.lat,true),
@@ -863,10 +975,10 @@
   });
 
   const examplePoints = [
-    {name:'MJ01E',lat:44.479722,lon:-125.152500,depth:1238,note:'Example'},
-    {name:'MJ01F',lat:44.364722,lon:-124.963056,depth:617,note:'Example'},
-    {name:'MJ01G',lat:44.690000,lon:-124.456944,depth:112,note:'Example'},
-    {name:'MJ01C',lat:44.637323,lon:-124.305402,depth:80,note:'Example'}
+    {name:'MJ01E',subset:'OOI-RCA Oregon',lat:44.479722,lon:-125.152500,depth:1238,note:'Example'},
+    {name:'MJ01F',subset:'OOI-RCA Oregon',lat:44.364722,lon:-124.963056,depth:617,note:'Example'},
+    {name:'MJ01G',subset:'OOI-RCA Oregon',lat:44.690000,lon:-124.456944,depth:112,note:'Example'},
+    {name:'MJ01C',subset:'OOI-RCA Oregon',lat:44.637323,lon:-124.305402,depth:80,note:'Example'}
   ];
 
   el('exampleBtn').addEventListener('click', () => {
@@ -1094,6 +1206,7 @@
     if (event.layer === contours) updateContourLabels();
   });
 
+  restoreSubsetState();
   const restoredCount = restorePoints();
   render();
   if (restoredCount) {
