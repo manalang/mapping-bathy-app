@@ -78,6 +78,8 @@ This app currently uses:
 - GEBCO `GEBCO_Latest` WMS bathymetry
 - NOAA Chart Display Service WMS, rendered from current ENC data
 
+The WMS basemaps use reduced-concurrency 512 px panels and bounded automatic retries to recover intermittent panel failures during close zooms.
+
 Internet access is therefore required for the map and external JavaScript libraries.
 
 ## Important

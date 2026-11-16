@@ -30,8 +30,10 @@
     crs:L.CRS.EPSG3857,
     noWrap:true,
     bounds:worldBounds,
+    tileSize:512,
+    updateWhenIdle:true,
     updateWhenZooming:false,
-    keepBuffer:2,
+    keepBuffer:0,
     maxZoom:22,
     crossOrigin:true,
     attribution:'GEBCO Compilation Group — latest WMS'
@@ -51,8 +53,10 @@
       crs:L.CRS.EPSG3857,
       noWrap:true,
       bounds:worldBounds,
+      tileSize:512,
+      updateWhenIdle:true,
       updateWhenZooming:false,
-      keepBuffer:2,
+      keepBuffer:0,
       maxZoom:22,
       crossOrigin:true,
       attribution:'NOAA Chart Display Service — not for navigation'
@@ -80,6 +84,28 @@
   );
 
   const status = document.getElementById('status');
+
+  function addWmsTileRecovery(layer, label) {
+    layer.on('tileerror', event => {
+      const tile=event.tile;
+      const retryCount=Number(tile.dataset.wmsRetryCount || 0);
+      if (retryCount >= 2) {
+        if (map.hasLayer(layer)) status.textContent=`${label} could not load one or more panels. Pan or zoom slightly to try again.`;
+        return;
+      }
+      tile.dataset.wmsRetryCount=String(retryCount+1);
+      const delay=700*Math.pow(2,retryCount)+Math.random()*500;
+      setTimeout(() => {
+        if (!map.hasLayer(layer) || !tile.isConnected) return;
+        const retryUrl=new URL(tile.src);
+        retryUrl.searchParams.set('_tileRetry', `${retryCount+1}-${Date.now()}`);
+        tile.src=retryUrl.toString();
+      }, delay);
+    });
+  }
+
+  addWmsTileRecovery(bathy, 'GEBCO bathymetry');
+  addWmsTileRecovery(noaaChart, 'NOAA nautical chart');
   bathy.on('load', () => {
     if (map.hasLayer(bathy)) status.textContent = 'GEBCO bathymetry loaded.';
   });
