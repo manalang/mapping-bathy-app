@@ -48,10 +48,14 @@
       </div>
       <div id="inputPanelBody" class="collapsible-body">
       <h3>Add a position</h3>
-      <div class="row" style="grid-template-columns:1fr 1fr 1fr">
+      <div class="row" style="grid-template-columns:1fr 1fr 1fr 1fr">
         <div class="field">
           <label for="name">Label / Site</label>
           <input id="name" placeholder="e.g. MJ01E" />
+        </div>
+        <div class="field">
+          <label for="subset">Subset</label>
+          <input id="subset" list="subsetOptions" placeholder="e.g. OOI-RCA Axial" />
         </div>
         <div class="field">
           <label for="depth">Depth (m)</label>
@@ -130,7 +134,7 @@
       </div>
       <div class="hint">
         Recognized column names include <b>Name/Site/Label</b>, <b>Latitude/Lat</b>, <b>Longitude/Lon/Long</b>,
-        and <b>Annotation/Note/Description</b>. Decimal-degree latitude/longitude is the recommended spreadsheet format.
+        <b>Subset/Group</b>, and <b>Annotation/Note/Description</b>. Decimal-degree latitude/longitude is the recommended spreadsheet format.
       </div>
       </div>
     </div>
@@ -146,7 +150,7 @@
       <div class="position-search" role="search">
         <span aria-hidden="true">⌕</span>
         <input id="positionSearch" type="search" placeholder="Search positions" autocomplete="off"
-          aria-label="Search site, coordinates, depth, or annotation">
+          aria-label="Search subset, site, coordinates, depth, or annotation">
         <button id="clearSearchBtn" type="button" class="search-clear" title="Clear search" aria-label="Clear position search">×</button>
       </div>
       <div id="positionsTableWrap" class="tablewrap" aria-label="Resizable position list">
@@ -156,6 +160,7 @@
               <th class="select-col"><button id="selectAllBtn" class="header-action" title="Show or hide all positions">Show</button></th>
               <th class="select-col" title="Show the site annotation on the map">Label</th>
               <th><button class="sort-button" data-sort="name">Site</button></th>
+              <th><button class="sort-button" data-sort="subset">Subset</button></th>
               <th class="coords-dd"><button class="sort-button" data-sort="lat">Latitude DD</button></th>
               <th class="coords-dd"><button class="sort-button" data-sort="lon">Longitude DD</button></th>
               <th class="coords-dm"><button class="sort-button" data-sort="lat">Latitude DM</button></th>
@@ -169,6 +174,7 @@
           <tbody id="tbody"></tbody>
         </table>
       </div>
+      <datalist id="subsetOptions"></datalist>
     </div>
   </section>
 
